@@ -72,7 +72,8 @@ export default function DonsSlide({ d }: { d: SlideData }) {
           <Story k="Places · 24 h">{d.places.ups.length + d.places.downs.length === 0 ? "No change of place in 24 hours" : <span style={{ fontFamily: MONO, fontSize: u(23) }}>{d.places.ups.length > 0 && <><span style={{ color: K.gain }}>▲</span>{group(d.places.ups)}<br /></>}{d.places.downs.length > 0 && <><span style={{ color: K.loss }}>▼</span>{group(d.places.downs)}</>}</span>}</Story>
         </div>
       </div>
-      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: u(64), display: "flex", alignItems: "center", justifyContent: "space-between", padding: `0 ${u(64)}`, background: K.panel, borderTop: `1px solid ${K.line}`, fontSize: u(19), color: K.muted, whiteSpace: "nowrap", gap: u(40) }}>
+      {/* the same left and right edges as the tiles above, and the tiles' inner margin, so its words start under theirs */}
+      <div style={{ position: "absolute", left: u(64), right: u(64), bottom: u(18), height: u(52), display: "flex", alignItems: "center", justifyContent: "space-between", padding: `0 ${u(28)}`, background: K.panel, borderTop: `1px solid ${K.line}`, fontSize: u(19), color: K.muted, whiteSpace: "nowrap", gap: u(40) }}>
         <span><b style={{ fontFamily: SANS, color: K.gold, letterSpacing: u(3) }}>{SITE_NAME.toUpperCase()}</b> · unofficial statistics, made by fans · <span style={{ fontFamily: MONO, color: K.text }}>{SITE_HOST}</span></span>
         <span>Positions: YB Tracking{d.sync && <> · last sync {hhmm(d.sync)} UTC</>} · not to be relayed to a competitor (NOR F.8.2)</span></div>
     </div>
