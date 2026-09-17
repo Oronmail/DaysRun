@@ -20,6 +20,8 @@ export const DEFINITIONS: [string, string][] = [
   ["Wind and sea", "Model values from Open-Meteo at each report position, not measured on board. Wind is the hourly mean at 10 m and the gust, in knots, with the direction it blows from in degrees true; arrows point downwind. Force is Beaufort, derived from the rounded value shown (Force 8, a gale, is 34–40 kt). A gale day or light-wind day means every report of a UTC day at 34 kt or more, or under 6 kt. Waves are significant wave height, sea and swell combined; swell is given with its period. Current is the speed in knots and the direction it sets toward. Sea temp is sea-surface temperature; pressure is sea-level pressure in hPa."],
   ["Units and times", "Nautical miles (nm), knots (kt), degrees true, UTC. The Notice of Race speaks of GMT; for this race they are the same. Times are written 0722 UTC; seconds appear only in YB’s splits."],
 ];
+// The race's own live tracker. We link to it; nothing on this site fetches from goldengloberace.com.
+export const TRACKER_URL = "https://goldengloberace.com/live-tracker/";
 // Sprints in course order (the worker's config.SPRINTS). Pages show the most advanced sprint first.
 export const SPRINT_ORDER = ["45°N–40°N", "40°N–35°N", "35°N–30°N", "30°N–Equator", "Equator–40°S"];
 export const COURSE: [string, string][] = [

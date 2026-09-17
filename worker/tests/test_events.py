@@ -34,8 +34,9 @@ def test_gale_event_from_conditions():
 def test_moves_ignore_a_place_gained_against_a_stale_boat():
     """Audit N6: Andrea's fix is 3.9 h old at T, so Ertan 'passing' Andrea is a staleness artefact, not a move.
     Guido/Guy and Henry/Isa are genuine swaps."""
-    body = next(e for e in events.derive(snap(), [], []) if e["kind"] == "moves")["body"]
-    assert body == "Up: Guido, Henry. Down: Guy, Isa."
+    ev = next(e for e in events.derive(snap(), [], []) if e["kind"] == "moves")
+    assert ev["title"] == "Places, last 24 hours: ▲1 Guido, Henry · ▼1 Guy, Isa"     # the feed shows titles: the title says who moved
+    assert ev["dedupe_key"] == "moves:2026-09-16:▲1 Guido, Henry · ▼1 Guy, Isa"         # the same line is stored once a day, not every four hours
 
 def test_derive_is_safe_on_an_empty_snapshot_and_a_missing_gust():
     empty = {"as_of": T, "race_day": 0, "boats": [], "ghosts": {}, "fleet": None, "records": [], "sprints": []}

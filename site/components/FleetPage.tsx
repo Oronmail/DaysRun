@@ -8,6 +8,7 @@ import RankingList from "@/components/RankingList";
 import { BARS_LEGEND } from "@/components/SpeedBars";
 import FleetMap, { type Marker } from "@/components/FleetMap";
 import { fleetView } from "@/lib/geo";
+import { TRACKER_URL } from "@/lib/text";
 import { latestFleet, boatStats, raceSetup, eventsRecent } from "@/lib/db";
 import { dateline, nm, dayMon, dayMonTime } from "@/lib/format";
 
@@ -47,7 +48,8 @@ export default async function FleetPage({ window = "24h" }: { window?: Win }) {
       </div>
       <aside style={{ display: "flex", flexDirection: "column", gap: 28 }}>
         <div className="ord-first" style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">The fleet at {dateline(fleet.as_of, fleet.race_day).slice(-8)}</div></div>
-          <div style={{ border: "1px solid var(--ink)", padding: 6, background: "var(--panel)" }}><FleetMap view={view} course={setup.raw_setup.course.nodes} markers={markers} /></div></div>
+          <div style={{ border: "1px solid var(--ink)", padding: 6, background: "var(--panel)" }}><FleetMap view={view} course={setup.raw_setup.course.nodes} markers={markers} /></div>
+          <div className="small" style={{ fontSize: 12 }}>Positions here are the 4-hourly reports. To follow the boats live: <a href={TRACKER_URL} target="_blank" rel="noopener noreferrer">the official GGR tracker ↗</a></div></div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><div className="rule-title"><div className="label">Next mark</div></div>
           <div className="small">Estimated arrival, UTC: distance to the mark ÷ made-good speed over the last 7 days. * position from an older fix.</div>
           {boats.slice(0, 5).map(b => <div key={b.team_id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 12, padding: "7px 0", borderBottom: "1px solid var(--hair)" }}><span className="mont" style={{ fontSize: 13, fontWeight: 600 }}>{b.team.name}{b.stale ? " *" : ""}</span><span className="num small" style={{ fontSize: 12 }}><span style={{ fontFamily: "var(--font-serif)", fontStyle: "italic" }}>{b.next_mark}</span> {nm(b.next_mark_nm)} nm</span><span className="num" style={{ fontSize: 13 }}>{dayMonTime(b.next_mark_eta)}</span></div>)}

@@ -35,10 +35,16 @@ def derive(snapshot, previous, conditions):
     fresh = [b for b in boats if b["id"] not in stale_ids]
     now_pos = {b["id"]: i for i, b in enumerate(sorted(fresh, key=lambda b: b["rank"]))}
     then_pos = {b["id"]: i for i, b in enumerate(sorted(fresh, key=lambda b: b["rank"] + b["rank_change"]))}
-    ups = [b["first"] for b in fresh if then_pos[b["id"]] > now_pos[b["id"]]]
-    downs = [b["first"] for b in fresh if then_pos[b["id"]] < now_pos[b["id"]]]
-    if ups or downs:
-        add("moves", None, "Places changed in the last 24 hours", ("Up: " + ", ".join(ups) + ". " if ups else "") + ("Down: " + ", ".join(downs) + "." if downs else ""), key=f"moves:{_d(T)}")
+    gained = {b["id"]: then_pos[b["id"]] - now_pos[b["id"]] for b in fresh}
+    if any(gained.values()):
+        # The feed prints titles, so the title names who moved and by how much, grouped like the table's arrows:
+        # "Places, last 24 hours: ▲2 Louis · ▲1 Ertan, Henry · ▼1 Mara". The same line is stored once a day.
+        groups = {}
+        for b in sorted(fresh, key=lambda b: b["rank"]):
+            if gained[b["id"]]:
+                groups.setdefault(gained[b["id"]], []).append(b["first"])
+        text = " · ".join(f"{'▲' if n > 0 else '▼'}{abs(n)} {', '.join(who)}" for n, who in sorted(groups.items(), key=lambda kv: -kv[0]))
+        add("moves", None, f"Places, last 24 hours: {text}", "A place gained against a boat that missed the report is not counted.", key=f"moves:{_d(T)[:10]}:{text}")
     lead = boats[0]
     if lead["next_mark_nm"] is not None and lead["next_mark_nm"] < 100 and lead["next_mark_eta"]:
         add("next_mark", lead["id"], f"{lead['first']} is {round(lead['next_mark_nm'])} nm from {lead['next_mark']}, due about {datetime.fromtimestamp(lead['next_mark_eta'], timezone.utc).strftime('%H%M')} UTC", page="Course & sprints", key=f"next_mark:{lead['id']}:{_d(T)}")
