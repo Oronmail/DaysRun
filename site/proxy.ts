@@ -52,6 +52,6 @@ export default async function proxy(request: NextRequest) {
   return loginPage(url.pathname + url.search, false);
 }
 
-// Everything is gated except Next's static assets (no race data in them) and the worker's revalidation ping, which
-// carries its own secret.
-export const config = { matcher: "/((?!_next/static|_next/image|favicon.ico|api/revalidate).*)" };
+// Everything is gated except Next's static assets (no race data in them), the worker's revalidation ping and Vercel's
+// cron call, each of which carries its own secret.
+export const config = { matcher: "/((?!_next/static|_next/image|favicon.ico|api/revalidate|api/cron).*)" };
