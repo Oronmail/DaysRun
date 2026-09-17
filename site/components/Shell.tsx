@@ -1,6 +1,6 @@
 // site/components/Shell.tsx
 import Link from "next/link";
-import { SITE_NAME, STRAPLINE, dayMonTime } from "@/lib/format";
+import { SITE_NAME, dayMonTime } from "@/lib/format";
 import { lastSync } from "@/lib/db";
 const NAV: [string, string][] = [["Fleet", "/"], ["Skippers", "/skippers"], ["Ghost race", "/ghosts"], ["Records", "/records"], ["Course & sprints", "/course"], ["Boats", "/boats"], ["Conditions", "/conditions"], ["Method", "/method"]];
 export const NOTICE = "Not affiliated with the Golden Globe Race. Nothing on this site may be relayed to a competitor (NOR F.8.2).";
@@ -9,7 +9,7 @@ export default async function Shell({ active, dateline, title, note, sub, childr
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <header className="site-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--header-bg)", color: "var(--header-fg)", flexWrap: "wrap", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}><span className="mont" style={{ fontSize: 13, fontWeight: 700, letterSpacing: 2.4 }}>{SITE_NAME.toUpperCase()}</span><span style={{ fontSize: 12, fontStyle: "italic", color: "var(--header-muted)" }}>{STRAPLINE}</span></div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}><span className="mont" style={{ fontSize: 13, fontWeight: 700, letterSpacing: 2.4 }}>{SITE_NAME.toUpperCase()}</span><span className="mont" style={{ fontSize: 13, fontWeight: 600, letterSpacing: 2.4, color: "var(--gold)" }}>GOLDEN GLOBE RACE 2026</span><span style={{ fontSize: 12, fontStyle: "italic", color: "var(--header-muted)" }}>unofficial statistics, made by fans</span></div>
         <div className="num" style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--header-muted)" }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--gold)" }} />Positions every 4 h{sync && <> · last sync {dayMonTime(sync)} UTC</>}</div>
       </header>
       <div className="wrap" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", paddingTop: 40, gap: 24, flexWrap: "wrap" }}>

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import Shell from "@/components/Shell";
 import SpeedBars from "@/components/SpeedBars";
-import { Tri } from "@/components/RankingTable";
+import { Tri } from "@/components/Who";
 import { latestFleet, boatStats } from "@/lib/db";
 import { dateline, nm, sgn } from "@/lib/format";
 export const revalidate = 900;

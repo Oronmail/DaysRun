@@ -1,25 +1,28 @@
-// site/components/RankingTable.tsx
-import Link from "next/link";
+// site/components/RankingTable.tsx — the Fleet ranking. A client component only so that a column title can re-order the rows;
+// it receives the rows from the server and calls nothing.
+"use client";
+import { useState } from "react";
 import type { BoatStat } from "@/lib/db";
-import { nm, kn, sgn, hhmm, dayMon } from "@/lib/format";
+import { nm, kn, sgn } from "@/lib/format";
+import { sortBoats, defaultDir, type SortKey, type SortDir } from "@/lib/sort";
 import SpeedBars from "./SpeedBars";
-export function Tri({ n }: { n: number }) {
-  if (n > 0) return <span className="gain" style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><svg width="8" height="7"><path d="M4 0 L8 7 L0 7 Z" fill="currentColor" /></svg>{n}</span>;
-  if (n < 0) return <span className="loss" style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><svg width="8" height="7"><path d="M0 0 L8 0 L4 7 Z" fill="currentColor" /></svg>{-n}</span>;
-  return <span style={{ color: "var(--graphite)" }}>–</span>;
-}
-export function Who({ b, sub = true }: { b: BoatStat; sub?: boolean }) {
-  return <div style={{ whiteSpace: "nowrap" }}>
-    <div className="mont" style={{ fontSize: 13, fontWeight: 600 }}><Link href={`/skipper/${b.team_id}`} className="who-link">{b.team.name}</Link> <span style={{ fontWeight: 500, color: "var(--graphite)", fontSize: 11 }}>{b.team.country_code}</span></div>
-    {sub && <div style={{ fontStyle: "italic", fontSize: 13, color: "var(--graphite)" }}>{b.team.model}</div>}
-    {b.stale && <div className="mont loss" style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.6 }}>MISSED {hhmm(b.as_of)} REPORT · LAST FIX {hhmm(b.last_fix_at)} UTC</div>}
-    {b.restart_at && <div className="mont" style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.6, color: "var(--graphite)" }}>RESTARTED {dayMon(b.restart_at).toUpperCase()} AFTER REPAIRS</div>}
-  </div>;
+import { Tri, Who } from "./Who";
+type Sort = { key: SortKey; dir: SortDir };
+// Top level, not inside the table's render: a component defined during render is a new type every time, so React would
+// remount the header cells on each sort and the keyboard focus would be lost after every press.
+function Th({ k, sort, setSort, children, right, pad }: { k: SortKey; sort: Sort; setSort: (s: Sort) => void; children: React.ReactNode; right?: boolean; pad?: boolean }) {
+  const on = sort.key === k;
+  return <th className={right ? "r" : undefined} style={pad ? { paddingLeft: 12 } : undefined} aria-sort={on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+    <button type="button" className="th-sort" onClick={() => setSort(on ? { key: k, dir: sort.dir === "asc" ? "desc" : "asc" } : { key: k, dir: defaultDir(k) })} title="Sort by this column">
+      {children}<span aria-hidden="true" className="th-arrow">{on ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}</span></button></th>;
 }
 export default function RankingTable({ boats, window = "24h" }: { boats: BoatStat[]; window?: "4h" | "24h" | "7d" }) {
+  const [sort, setSort] = useState<Sort>({ key: "rank", dir: "asc" });
+  const h = { sort, setSort };
   const col = window === "4h" ? { h: "4 h leg kt", v: (b: BoatStat) => kn(b.spd4) } : window === "7d" ? { h: "7 d run nm", v: (b: BoatStat) => nm(b.run7_nm) } : { h: "24 h run nm", v: (b: BoatStat) => nm(b.run24_nm) };
-  return <table className="data"><thead><tr><th>Place</th><th>± 24 h</th><th>Skipper · design</th><th>Position</th><th className="r">To go nm</th><th className="r">Gap</th><th className="r">{col.h}</th><th style={{ paddingLeft: 12 }}>Speed · 7 days</th><th className="r">vs VDH</th></tr></thead>
-    <tbody>{boats.map(b => <tr key={b.team_id}>
+  const rows = sortBoats(boats, sort.key, sort.dir, window);
+  return <table className="data"><thead><tr><Th k="rank" {...h}>Place</Th><Th k="change" {...h}>± 24 h</Th><Th k="name" {...h}>Skipper · design</Th><Th k="lat" {...h}>Position</Th><Th k="dtf" {...h} right>To go nm</Th><Th k="gap" {...h} right>Gap</Th><Th k="run" {...h} right>{col.h}</Th><Th k="spd7" {...h} pad>Speed · 7 days</Th><Th k="vdh" {...h} right>vs VDH</Th></tr></thead>
+    <tbody>{rows.map(b => <tr key={b.team_id}>
       <td className="num" style={{ fontSize: 15, fontWeight: 500 }}>{b.rank}</td><td className="num" style={{ fontSize: 12 }}><Tri n={b.rank_change} /></td>
       <td><Who b={b} /></td><td className="num" style={{ fontSize: 12, color: "var(--graphite)" }}>{b.position_text}</td>
       <td className="num r">{nm(b.dtf_nm)}</td><td className="num r" style={{ color: "var(--graphite)" }}>{b.gap_nm ? `+${nm(b.gap_nm)}` : "—"}</td>

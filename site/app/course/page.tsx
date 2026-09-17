@@ -1,6 +1,6 @@
 // site/app/course/page.tsx
 import Shell from "@/components/Shell";
-import { Who } from "@/components/RankingTable";
+import { Who } from "@/components/Who";
 import { latestFleet, boatStats, sprintResults } from "@/lib/db";
 import { COURSE, SPRINT_ORDER } from "@/lib/text";
 import { dateline, nm, kn, dayMonTime, hoursText } from "@/lib/format";

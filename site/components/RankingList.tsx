@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { BoatStat } from "@/lib/db";
 import { nm, kn, sgn, hhmm, dayMon } from "@/lib/format";
 import SpeedBars from "./SpeedBars";
-import { Tri } from "./RankingTable";
+import { Tri } from "./Who";
 export default function RankingList({ boats, window = "24h" }: { boats: BoatStat[]; window?: "4h" | "24h" | "7d" }) {
   const run = (b: BoatStat) => window === "4h" ? `${kn(b.spd4)} kt / 4 h` : window === "7d" ? `${nm(b.run7_nm)} nm / 7 d` : `${nm(b.run24_nm)} nm / 24 h`;
   return <div>{boats.map(b => <div key={b.team_id} style={{ display: "grid", gridTemplateColumns: "26px minmax(0,1fr) auto", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--hair)", alignItems: "start" }}>

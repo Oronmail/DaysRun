@@ -1,7 +1,7 @@
 // site/app/conditions/page.tsx
 import Shell from "@/components/Shell";
 import Tiles from "@/components/Tiles";
-import { Who } from "@/components/RankingTable";
+import { Who } from "@/components/Who";
 import { latestFleet, boatStats, conditionsAt } from "@/lib/db";
 import { beaufort } from "@/lib/text";
 import { dateline, hhmm } from "@/lib/format";
