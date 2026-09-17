@@ -62,3 +62,72 @@ def test_personal_bests_match_audited_golden():
             assert abs(best7[0] - best7_expected) <= 3
     slots = grid.resample(fx[3], START_AT)                   # Guido: the 156 nm window bridged a missed report
     assert round(stats.personal_bests(slots, grid.slot_of(T), 0, START_AT)[1][0]) == 150
+
+# worker/tests/test_stats.py (append)
+# Corrections from the 2026-09-16 numbers audit (an independent recomputation) that supersede golden.snap.json:
+BEST24_OVERRIDE = {3: 150}                                        # Guido: the 156 nm window bridged a missed report
+BEST7_OVERRIDE = {6: 1037, 3: None, 4: None, 11: None, 12: None, 13: None, 16: None}   # nearest-grid; no clean window
+VS_VDH_DAYS = {17: -0.50, 16: -0.52, 13: -0.62, 4: -0.69, 3: -0.84, 5: -0.88, 2: -0.93, 11: -1.46, 12: -1.49, 14: -1.56,
+               1: -1.80, 15: -1.97, 8: -3.52, 9: -3.74}          # time rule, boats behind Van Den Heede; 6 and 10 are ahead
+VS_KIRSTEN_DAYS = {8: -0.91, 9: -1.06}                           # behind Neuschäfer; the other 14 are ahead
+NO_4H_LEG = {16, 4}                                                # Andrea and Daniel: the latest 4-hour leg spans a missed report
+RUN_PB_OVERRIDE = {3: True}                                        # Guido: his clean best (150 nm) ENDS at T, so today's run is his personal best (follows from audit N3; the audit's count of 5 predates it)
+
+def test_snapshot_matches_golden():
+    snap = stats.compute_snapshot(setup(), fleet(), T)
+    assert snap["race_day"] == 10
+    by = {b["id"]: b for b in snap["boats"]}
+    for tid, g in GB.items():
+        b = by[tid]
+        assert b["rank"] == g["rank"] and b["rank_change"] == g["chg"], tid
+        assert round(b["dtf_nm"]) == round(g["dtf"]) and b["gap_nm"] == g["gap"], tid
+        assert hhmm(b["last_fix_at"]) == g["fix"], tid
+        assert round(b["w24"]["dist_nm"]) == g["run24"], tid
+        assert (b["w4"] is None) == (tid in NO_4H_LEG), tid
+        assert round(b["best24_nm"]) == BEST24_OVERRIDE.get(tid, g["best24"]), tid
+        assert round(b["best4_kn"], 1) == g["best4"], tid
+        want7 = BEST7_OVERRIDE.get(tid, g["best7"])
+        assert (b["best7_nm"] is None) == (want7 is None) and (want7 is None or abs(b["best7_nm"] - want7) <= 3), tid
+        if tid in VS_VDH_DAYS: assert abs(b["vs_vdh_days"] - VS_VDH_DAYS[tid]) < 0.15, tid
+        else: assert b["vs_vdh_days"] > 0, tid
+        if tid in VS_KIRSTEN_DAYS: assert abs(b["vs_kirsten_days"] - VS_KIRSTEN_DAYS[tid]) < 0.15, tid
+        else: assert b["vs_kirsten_days"] > 0, tid
+        assert round(b["next_mark_nm"]) == g["to_canary"], tid
+        eta = datetime.fromtimestamp(b["next_mark_eta"], timezone.utc).strftime("%d %b %H%M")
+        assert eta[:6] == g["eta_canary"][:6] and abs(int(eta[-4:]) - int(g["eta_canary"][-4:])) <= 12, tid   # ±12 min
+        assert b["pb24"] == RUN_PB_OVERRIDE.get(tid, g["run_pb"]) and b["fleet_best24"] == g["run_fleet_best"], tid
+        assert (b["restart"] is not None) == (g["restart"] is not None), tid
+    assert by[16]["stale"] is True and by[6]["stale"] is False
+    f = snap["fleet"]
+    assert f["spread_nm"] == GOLD["spread"] and f["ahead_vdh"] == GOLD["ahead_vdh"] and f["ahead_kirsten"] == GOLD["ahead_kirsten"]
+    assert f["stale_ids"] == [16]
+    assert f["best_run24_nm"] == GOLD["best_run"] and f["best_run24_team_id"] == 12
+    assert round(snap["ghosts"][978]["dtf_nm"]) == round(GOLD["ghosts"]["978"]["dtf"])
+    assert round(snap["ghosts"][940]["dtf_nm"]) == round(GOLD["ghosts"]["940"]["dtf"])
+
+def test_records_and_sprints():
+    snap = stats.compute_snapshot(setup(), fleet(), T)
+    race24 = [r for r in snap["records"] if r["kind"] == "best24" and r["win"] == "race"]
+    assert race24[0]["team_id"] == 16 and round(race24[0]["value"]) == 171      # Andrea, window ending 12 Sep 0804
+    assert all(r["team_id"] != 3 or round(r["value"]) != 156 for r in race24)   # Guido's bridged 156 is not a record
+    assert len([s for s in snap["sprints"] if s["sprint"] == "45°N–40°N"]) == 14   # capped at T: 14 through, not 16
+    race4 = [r for r in snap["records"] if r["kind"] == "best4" and r["win"] == "race"]
+    assert race4[0]["team_id"] == 6 and round(race4[0]["value"], 1) == 7.6
+    biscay = sorted([s for s in snap["sprints"] if s["sprint"] == "45°N–40°N"], key=lambda s: s["hours"])
+    assert biscay[0]["team_id"] == 11 and abs(biscay[0]["hours"] - 59.1) < 0.1          # Mara
+    portugal = sorted([s for s in snap["sprints"] if s["sprint"] == "40°N–35°N"], key=lambda s: s["hours"])
+    assert portugal[0]["team_id"] == 6 and abs(portugal[0]["hours"] - 48.5) < 0.1        # Damien
+    assert len([s for s in snap["sprints"] if s["sprint"] == "35°N–30°N"]) == 1
+
+def test_snapshot_survives_the_first_hours_of_the_race():
+    """The backfill derives every 4-hour slot from the gun. In the first hours some boats have no usable grid fix yet
+    (in-port fixes with distance-to-finish 0 are dropped), so windows, records and the fleet's best run can all be empty."""
+    fx, st = fleet(), setup()
+    for k in range(grid.slot_of(START_AT), grid.slot_of(START_AT) + 8):
+        snap = stats.compute_snapshot(st, fx, grid.slot_time(k))
+        assert snap["as_of"] == grid.slot_time(k)
+        for b in snap["boats"]:
+            assert b["speed_log"] is not None and b["rank"] >= 1
+    first = stats.compute_snapshot(st, fx, grid.slot_time(grid.slot_of(START_AT) + 1))     # 6 Sep 1600, the backfill's first slot
+    assert first["fleet"]["racing"] == len(first["boats"]) and first["race_day"] == 0
+    assert stats.compute_snapshot(st, fx, START_AT - 30 * 86400)["boats"] == []             # before any fix (trackers ran in port for days before the gun): empty, not a crash
