@@ -1,8 +1,0 @@
-pyproject.toml
-ggrstats/__init__.py
-ggrstats.egg-info/PKG-INFO
-ggrstats.egg-info/SOURCES.txt
-ggrstats.egg-info/dependency_links.txt
-ggrstats.egg-info/requires.txt
-ggrstats.egg-info/top_level.txt
-tests/test_smoke.py

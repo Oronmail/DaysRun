@@ -9,3 +9,5 @@ site/node_modules/
 site/.next/
 site/.vercel/
 .DS_Store
+*.egg-info/
+.pytest_cache/
