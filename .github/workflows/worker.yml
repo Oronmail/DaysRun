@@ -31,8 +31,8 @@ jobs:
       GGR_SNAPDIR: ${{ github.workspace }}/snapshots
       GGR_USER_AGENT: "daysrun/0.1 (unofficial fan statistics; https://github.com/${{ github.repository }})"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
