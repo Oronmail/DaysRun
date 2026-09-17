@@ -1,0 +1,7 @@
+/* site/app/tokens.css — direction A “Chart Table” */
+:root {
+  --paper: #F4EFE3; --panel: #FBF8F1; --ink: #1B1F24; --graphite: #5E6670; --land: #D9D6CC; --coast: #8C8778;
+  --rule: #B9B2A1; --hair: #D8D1C1; --tick: #9C9483; --gold: #DEB200; --gold-text: #7A6000; --magenta: #B0306F;
+  --gain: #4F6E35; --loss: #A8412B; --link: #2C5F7C; --series-1: #1F6FA3; --series-2: #B07F00; --bar: #8A8F96;
+  --pencil: #4A5058; --header-bg: #1B1F24; --header-fg: #EDE7D8; --header-muted: #B9B2A1;
+}

@@ -1,0 +1,25 @@
+/* site/app/globals.css */
+@import "./tokens.css";
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-serif), Georgia, serif; }
+a { color: var(--link); text-decoration: underline; text-underline-offset: 2px; }
+a:hover { color: var(--ink); }
+.num { font-family: var(--font-mono), Menlo, monospace; font-variant-numeric: tabular-nums; }
+.mont { font-family: var(--font-sans), sans-serif; }
+.label { font-family: var(--font-sans), sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+.small { font-size: 13px; color: var(--graphite); }
+.gain { color: var(--gain); } .loss { color: var(--loss); }
+table.data { width: 100%; border-collapse: collapse; }
+table.data th { text-align: left; padding: 0 6px 10px; font-family: var(--font-sans), sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--graphite); border-bottom: 1px solid var(--ink); white-space: nowrap; }
+table.data th.r, table.data td.r { text-align: right; }
+table.data td { padding: 8px 6px; font-size: 13px; white-space: nowrap; }
+table.data tbody tr:nth-child(odd) { background: var(--panel); }
+.tile { display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; background: var(--panel); border-top: 2px solid var(--gold); }
+.tile .k { font-family: var(--font-sans), sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; color: var(--graphite); }
+.tile .v { font-family: var(--font-sans), sans-serif; font-size: 28px; font-weight: 600; line-height: 1.15; }
+.tile .s { font-size: 14px; color: var(--graphite); }
+.rule-title { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--ink); }
+.panel { background: var(--panel); padding: 20px; }
+.pencil { font-family: var(--font-marker), cursive; color: var(--pencil); transform: rotate(-3deg); }
+.wrap { padding: 0 56px; } .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 36px; }
+@media (max-width: 900px) { .wrap { padding: 0 16px; } .grid2 { grid-template-columns: 1fr; } table.data td, table.data th { padding-left: 4px; padding-right: 4px; } }
