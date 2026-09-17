@@ -14,6 +14,7 @@ export async function GET() {
     const h = health(sync.data?.[0]?.fetched_at ?? null, report.data?.[0]?.as_of ?? null, Date.now());
     return NextResponse.json(h, { status: h.ok ? 200 : 503, headers: { "cache-control": "no-store" } });
   } catch (e) {
-    return NextResponse.json({ ok: false, problems: [`the database could not be read: ${e instanceof Error ? e.message : "unknown error"}`] }, { status: 500, headers: { "cache-control": "no-store" } });
+    console.error("health: the database could not be read:", e);        // the detail goes to the server log, never to the public answer
+    return NextResponse.json({ ok: false, problems: ["the database could not be read"] }, { status: 500, headers: { "cache-control": "no-store" } });
   }
 }
