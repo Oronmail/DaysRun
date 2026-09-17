@@ -3,7 +3,7 @@ name: worker
 on:
   schedule:
     - cron: "12 0,4,8,12,16,20 * * *"     # main run, 12 min after each 4-hour report (UTC): capture + derive + weather + revalidate
-    - cron: "40 * * * *"                  # light capture every hour, to catch late fixes
+    - cron: "40 * * * *"                  # hourly catch-up: late fixes, and any report the main run had to skip
   workflow_dispatch:
     inputs:
       command:
