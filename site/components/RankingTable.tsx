@@ -20,9 +20,9 @@ function Th({ k, sort, setSort, children, right, pad, two }: { k: SortKey; sort:
 export default function RankingTable({ boats, window = "24h" }: { boats: BoatStat[]; window?: "4h" | "24h" | "7d" }) {
   const [sort, setSort] = useState<Sort>({ key: "rank", dir: "asc" });
   const h = { sort, setSort };
-  const col = window === "4h" ? { h: "4 h leg kt", v: (b: BoatStat) => kn(b.spd4) } : window === "7d" ? { h: "7 d run nm", v: (b: BoatStat) => nm(b.run7_nm) } : { h: "24 h run nm", v: (b: BoatStat) => nm(b.run24_nm) };
+  const col = window === "4h" ? { h: "4\u00a0h leg kt", v: (b: BoatStat) => kn(b.spd4) } : window === "7d" ? { h: "7\u00a0d run nm", v: (b: BoatStat) => nm(b.run7_nm) } : { h: "24\u00a0h run nm", v: (b: BoatStat) => nm(b.run24_nm) };   // a figure never parts from its unit at a line break
   const rows = sortBoats(boats, sort.key, sort.dir, window);
-  return <table className="data"><thead><tr><Th k="rank" {...h}>Place</Th><Th k="change" {...h}>± 24 h</Th><Th k="name" {...h}>Skipper · design</Th><Th k="dtf" {...h} right>To go nm</Th><Th k="gap" {...h} right>Gap</Th><Th k="gain" {...h} right two>On leader 24 h</Th><Th k="near" {...h} right two>vs nearby</Th><Th k="run" {...h} right two>{col.h}</Th><Th k="spd7" {...h} pad>Speed · 7 days</Th><Th k="vdh" {...h} right>vs VDH</Th></tr></thead>
+  return <table className="data"><thead><tr><Th k="rank" {...h}>Place</Th><Th k="change" {...h}>± 24 h</Th><Th k="name" {...h}>Skipper · design</Th><Th k="dtf" {...h} right>To go nm</Th><Th k="gap" {...h} right>Gap</Th><Th k="gain" {...h} right two>On leader 24{"\u00a0"}h</Th><Th k="near" {...h} right two>vs nearby</Th><Th k="run" {...h} right two>{col.h}</Th><Th k="spd7" {...h} pad>Speed · 7 days</Th><Th k="vdh" {...h} right>vs VDH</Th></tr></thead>
     <tbody>{rows.map(b => <tr key={b.team_id}>
       <td className="num" style={{ fontSize: 15, fontWeight: 500 }}>{b.rank}</td><td className="num" style={{ fontSize: 12 }}><Tri n={b.rank_change} /></td>
       <td><Who b={b} /></td>
