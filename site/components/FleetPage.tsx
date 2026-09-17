@@ -1,0 +1,53 @@
+// site/components/FleetPage.tsx — the Fleet page body, shared by / (last 24 h), /w/4h and /w/7d so that all three stay
+// statically rendered; reading ?w= from searchParams would make the page render on every request.
+import Link from "next/link";
+import Shell from "@/components/Shell";
+import Tiles from "@/components/Tiles";
+import RankingTable from "@/components/RankingTable";
+import { BARS_LEGEND } from "@/components/SpeedBars";
+import FleetMap, { type Marker } from "@/components/FleetMap";
+import { fleetView } from "@/lib/geo";
+import { latestFleet, boatStats, raceSetup, eventsRecent } from "@/lib/db";
+import { dateline, nm, dayMon, dayMonTime } from "@/lib/format";
+
+function poi(setup: Awaited<ReturnType<typeof raceSetup>>, name: string) {
+  const l = setup.raw_setup.poi.lines.find(l => l.name.includes(name)); if (!l) return null;
+  const [lat, lon] = l.nodes.split(",").map(Number); return { lat, lon };
+}
+export type Win = "4h" | "24h" | "7d";
+const WINS: [Win, string, string][] = [["24h", "Last 24 h", "/"], ["4h", "Last 4 h", "/w/4h"], ["7d", "Last 7 days", "/w/7d"]];
+export default async function FleetPage({ window = "24h" }: { window?: Win }) {
+  const fleet = await latestFleet();
+  const [boats, setup, events] = await Promise.all([boatStats(fleet.as_of), raceSetup(), eventsRecent(6)]);
+  const lead = boats[0]; const best = boats.reduce((a, b) => (b.best24_nm > a.best24_nm ? b : a), boats[0]);
+  const bestRun = boats.find(b => b.team_id === fleet.best_run24_team_id);
+  const view = fleetView(boats, 358);
+  const mark = poi(setup, "Canary mark");
+  const markers: Marker[] = boats.map(b => ({ lat: b.lat, lon: b.lon, kind: b.rank === 1 ? "lead" : "boat", label: b.rank <= 2 || b.rank >= 15 ? b.team.first_name ?? undefined : undefined, side: "l" }));
+  if (mark) markers.push({ ...mark, kind: "mark", label: "Lanzarote" });
+  return <Shell active="Fleet" dateline={dateline(fleet.as_of, fleet.race_day)} title="FLEET POSITIONS" note={`${lead.team.first_name} ${nm(lead.next_mark_nm)} nm from ${lead.next_mark}`}>
+    <Tiles items={[
+      { k: "Leader", v: lead.team.name, s: `${lead.team.model} · ${nm(lead.dtf_nm)} nm to go` },
+      { k: "Best 24-hour run so far", v: `${nm(best.best24_nm)} nm`, s: `${best.team.name} · ${best.team.model} · ${dayMon(best.best24_at)}` },
+      { k: "Fleet spread", v: `${nm(fleet.spread_nm)} nm`, s: "from the leader to the last boat" },
+      { k: `Against the ghosts, race day ${fleet.race_day}`, v: `${fleet.ahead_vdh} of ${fleet.racing}`, s: `ahead of Van Den Heede’s 2018 pace · ${fleet.ahead_kirsten} ahead of Neuschäfer’s 2022` },
+    ]} />
+    <div className="grid2">
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="rule-title"><div className="label">Ranking by distance to finish</div><div style={{ fontSize: 13 }}>{WINS.map(([w, label, href], i) => <span key={w}>{i > 0 && " · "}{w === window ? <strong>{label}</strong> : <Link href={href}>{label}</Link>}</span>)}</div></div>
+        <RankingTable boats={boats} window={window} />
+        <div className="small" style={{ fontSize: 12 }}>{BARS_LEGEND}{bestRun && ` · ${bestRun.team.first_name} sailed the fleet's longest run of the last 24 hours`}</div>
+      </div>
+      <aside style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">The fleet at {dateline(fleet.as_of, fleet.race_day).slice(-8)}</div></div>
+          <div style={{ border: "1px solid var(--ink)", padding: 6, background: "var(--panel)" }}><FleetMap view={view} course={setup.raw_setup.course.nodes} markers={markers} /></div></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><div className="rule-title"><div className="label">Next mark · {lead.next_mark}</div></div>
+          <div className="small">Estimated arrival, UTC: distance to the mark ÷ made-good speed over the last 7 days. * position from an older fix.</div>
+          {boats.slice(0, 5).map(b => <div key={b.team_id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 12, padding: "7px 0", borderBottom: "1px solid var(--hair)" }}><span className="mont" style={{ fontSize: 13, fontWeight: 600 }}>{b.team.name}{b.stale ? " *" : ""}</span><span className="num small" style={{ fontSize: 12 }}>{nm(b.next_mark_nm)} nm</span><span className="num" style={{ fontSize: 13 }}>{dayMonTime(b.next_mark_eta)}</span></div>)}
+          <a href="/course" style={{ fontSize: 13, marginTop: 6 }}>All sixteen, and every mark</a></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}><div className="rule-title"><div className="label">What changed</div></div>
+          {events.map((e, i) => <div key={i} style={{ fontSize: 14, lineHeight: 1.35 }}>{e.title}<span className="small" style={{ fontSize: 12 }}> · {dayMonTime(e.at)}</span></div>)}</div>
+      </aside>
+    </div>
+  </Shell>;
+}

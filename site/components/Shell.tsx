@@ -23,9 +23,11 @@ export default function Shell({ active, dateline, title, note, sub, children }: 
         {NAV.map(([n, href]) => <Link key={n} href={href} style={{ textDecoration: "none", paddingBottom: 4, color: n === active ? "var(--ink)" : "var(--graphite)", borderBottom: n === active ? "2px solid var(--gold)" : "none" }}>{n}</Link>)}
       </nav>
       <main className="wrap" style={{ display: "flex", flexDirection: "column", gap: 40, paddingTop: 32, flex: 1 }}>{children}</main>
-      <footer className="wrap" style={{ marginTop: 48, paddingTop: 16, paddingBottom: 28, display: "flex", justifyContent: "space-between", gap: 32, fontSize: 12, color: "var(--graphite)", flexWrap: "wrap" }}>
-        <span style={{ borderTop: "1px solid var(--rule)", paddingTop: 16 }}>{NOTICE}</span>
-        <span style={{ paddingTop: 16 }}>Positions: YB Tracking · Weather: Open-Meteo, CC BY 4.0 · In the spirit of Jonathan Endersby’s GGR Underground, 2022 · <Link href="/method">Method</Link></span>
+      <footer className="wrap" style={{ marginTop: 48, paddingBottom: 28 }}>
+        <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 16, display: "flex", justifyContent: "space-between", gap: 32, fontSize: 12, color: "var(--graphite)", flexWrap: "wrap" }}>
+          <span style={{ flex: "1 1 300px", maxWidth: 600 }}>{NOTICE}</span>
+          <span style={{ flex: "1 1 300px", maxWidth: 700 }}>Positions: YB Tracking · Weather: Open-Meteo, CC BY 4.0 · In the spirit of Jonathan Endersby’s GGR Underground, 2022 · <Link href="/method">Method</Link></span>
+        </div>
       </footer>
     </div>
   );
