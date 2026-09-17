@@ -21,6 +21,7 @@ def test_events_for_race_day_10():
     assert fb["team_id"] == 12 and "Henry" in fb["title"] and "161" in fb["title"]
     mr = next(e for e in ev if e["kind"] == "missed_report")
     assert mr["team_id"] == 16 and "Andrea" in mr["title"]
+    assert mr["title"] == "Andrea’s tracker skipped the 00:00 report" and mr["body"] == "Last fix at 20:03 UTC."       # times read 20:03, never 2003
     assert all(e["dedupe_key"].startswith(e["kind"]) for e in ev)
     assert not any(w in (e["title"] + (e["body"] or "")).lower().split() for e in ev for w in ("he", "she", "his", "her"))
 

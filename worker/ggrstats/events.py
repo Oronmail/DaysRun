@@ -31,8 +31,8 @@ def derive(snapshot, previous, conditions):
         elif b["pb24"] and run is not None and not was.get("pb24") and not b["fleet_best24"]:
             add("pb24", b["id"], f"{b['first']} sets a personal best 24-hour run: {run} nm", page="Records")
         if b["stale"] and not prev.get(b["id"], {}).get("stale"):
-            add("missed_report", b["id"], f"{b['first']}’s tracker skipped the {datetime.fromtimestamp(T, timezone.utc).strftime('%H%M')} report",
-                f"Last fix at {datetime.fromtimestamp(b['last_fix_at'], timezone.utc).strftime('%H%M')} UTC.")
+            add("missed_report", b["id"], f"{b['first']}’s tracker skipped the {datetime.fromtimestamp(T, timezone.utc).strftime('%H:%M')} report",
+                f"Last fix at {datetime.fromtimestamp(b['last_fix_at'], timezone.utc).strftime('%H:%M')} UTC.")
         if b["restart"] and prev and b["id"] in prev and not prev[b["id"]].get("restart_at"):
             add("restart", b["id"], f"{b['first']} restarted from Les Sables after repairs", "NOR C.1.2: race time is not reset.", key=f"restart:{b['id']}")
         # Said only when the next mark moves forward along the course: two snapshots derived by different rules, or a
@@ -74,7 +74,7 @@ def derive(snapshot, previous, conditions):
             add("duel", d["behind_id"], f"{c} has closed to {max(1, round(d['gap_nm']))} nm behind {a}, from {round(was)} nm three days ago", page="Fleet", key=f"duel:{d['ahead_id']}:{d['behind_id']}:{_d(T)[:10]}")
     lead = boats[0]
     if lead["next_mark_nm"] is not None and lead["next_mark_nm"] < 100 and lead["next_mark_eta"]:
-        add("next_mark", lead["id"], f"{lead['first']} is {round(lead['next_mark_nm'])} nm from {lead['next_mark']}, due about {datetime.fromtimestamp(lead['next_mark_eta'], timezone.utc).strftime('%H%M')} UTC", page="Course & sprints", key=f"next_mark:{lead['id']}:{_d(T)}")
+        add("next_mark", lead["id"], f"{lead['first']} is {round(lead['next_mark_nm'])} nm from {lead['next_mark']}, due about {datetime.fromtimestamp(lead['next_mark_eta'], timezone.utc).strftime('%H:%M')} UTC", page="Course & sprints", key=f"next_mark:{lead['id']}:{_d(T)}")
     first = {b["id"]: b["first"] for b in boats}
     for c in conditions:
         if c["wind_kn"] is not None and c["wind_kn"] >= 34 and c["team_id"] in first:
