@@ -1,7 +1,7 @@
 // site/__tests__/sort.test.ts
 import { describe, it, expect } from "vitest";
 import { sortBoats, defaultDir } from "../lib/sort";
-const b = (team_id: number, rank: number, o: Record<string, unknown> = {}) => ({ team_id, rank, rank_change: 0, dtf_nm: 24000 + rank, gap_nm: rank, lat: 30, run24_nm: 100, run7_nm: 700, spd4: 5, spd7: 5, vs_vdh_days: 0, team: { name: "X" + rank }, ...o });
+const b = (team_id: number, rank: number, o: Record<string, unknown> = {}) => ({ team_id, rank, rank_change: 0, dtf_nm: 24000 + rank, gap_nm: rank, gain24_nm: 0, vs_near_nm: 0, run24_nm: 100, run7_nm: 700, spd4: 5, spd7: 5, vs_vdh_days: 0, team: { name: "X" + rank }, ...o });
 describe("sortBoats", () => {
   const boats = [b(6, 1, { run24_nm: 154, team: { name: "Damien Guillou" } }), b(10, 2, { run24_nm: 143, team: { name: "Pat Lawless" } }), b(12, 3, { run24_nm: 174, team: { name: "Henry Wootton" } }), b(16, 4, { run24_nm: null, team: { name: "Andrea Lodolo" } })];
   it("sorts the run column longest first and keeps a missing value last in either direction", () => {
@@ -12,6 +12,10 @@ describe("sortBoats", () => {
   it("never mutates its input and breaks ties by place", () => {
     const tied = [b(2, 2), b(1, 1)]; const out = sortBoats(tied, "run", "desc", "24h");
     expect(out.map(x => x.rank)).toEqual([1, 2]); expect(tied.map(x => x.rank)).toEqual([2, 1]);
+  });
+  it("puts the biggest gain on the leader first and a boat without a current fix last", () => {
+    const g = [b(1, 1, { gain24_nm: null }), b(2, 2, { gain24_nm: -8 }), b(3, 3, { gain24_nm: 18 })];
+    expect(sortBoats(g, "gain", defaultDir("gain"), "24h").map(x => x.team_id)).toEqual([3, 2, 1]);
   });
   it("opens each column in its natural direction", () => { expect(defaultDir("rank")).toBe("asc"); expect(defaultDir("run")).toBe("desc"); expect(defaultDir("vdh")).toBe("desc"); expect(defaultDir("name")).toBe("asc"); });
 });

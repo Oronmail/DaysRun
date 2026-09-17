@@ -5,8 +5,8 @@ export const nm = (n: number | null | undefined) => n == null ? "—" : Math.rou
 export const kn = (n: number | null | undefined, d = 1) => n == null ? "—" : n.toFixed(d);
 export function sgn(n: number | null | undefined, d = 1): string {
   if (n == null) return "—";
-  const v = Math.abs(n).toFixed(d);
-  return n > 0 ? `+${v}` : n < 0 ? `−${v}` : `±${v}`;
+  const r = Number(n.toFixed(d)), v = Math.abs(r).toFixed(d);          // sign of the ROUNDED value, so 0.4 at no decimals is ±0, not +0
+  return r > 0 ? `+${v}` : r < 0 ? `−${v}` : `±${v}`;
 }
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 export function hhmm(iso: string | null | undefined): string {

@@ -11,7 +11,7 @@ Licence: the code is Apache-2.0 (see `LICENSE`). That licence covers the code on
 
 - `worker/` — Python worker: fetch YB, decode, derive statistics into Supabase, ping the site.
 - `db/` — Postgres migrations.
-- `site/` — Next.js site (Vercel).
+- `site/` — Next.js site (Vercel): Fleet (sortable ranking, race chart), Skippers, Ghost race, Records, Course & sprints, Performance, Boats, Conditions, Method, and a 1920×1080 broadcast board at `/board`.
 
 
 Day-to-day operation: the Runbook below.
@@ -23,6 +23,7 @@ Day-to-day operation: the Runbook below.
 - **The schedule stopped by itself:** GitHub disables scheduled workflows in a public repo after 60 days without repository activity (it e-mails a warning first). The race runs for eight months or more, so this will come up once the build goes quiet. Any push resets the clock; `gh workflow enable worker.yml` turns it back on. Check `gh workflow list` once a month. A stop of more than a few days loses track resolution for good, because YB thins its archive.
 - **A number looks wrong:** `python -m ggrstats.run verify --as-of <ISO>` against the golden file for 2026-09-16; for another time, recompute with `derive --as-of <ISO>` and read the Method page for the definition.
 - **A boat retires or changes class:** YB's `status` field arrives in RaceSetup; the worker stores it on `team.status`. Retired boats stay in `boat_stat` and pages (design plan §4); if YB adds a Chichester tag, teams carry `tags`, extend `upsert_teams` and the ranking filter.
+- **A new migration:** apply it by hand BEFORE pushing worker code that needs it — `psql "$DATABASE_URL" -f db/migrations/000N_name.sql` (the workflow does not run migrations) — then re-derive history so old snapshots get the new columns.
 - **Re-derive history** after a logic fix: `python -m ggrstats.run derive --since 2026-09-06T12:30:00Z`.
 - **Deploy the site:** `cd site && npx vercel deploy --prod --yes`. **Deploy the worker:** `git push` — the next scheduled run uses the new code.
 - **Local development:** `worker/`: `python3 -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"`, then `createdb ggrstats_test` and `DATABASE_URL_TEST=postgresql://localhost:5432/ggrstats_test pytest -q` (the database tests refuse any Supabase URL: they truncate every table). `site/`: copy `.env.example` to `.env.local`, `npm run dev`, `npm test`, `npm run build` (every page must be listed as static; only `/api/revalidate` is dynamic).

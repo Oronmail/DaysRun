@@ -19,6 +19,7 @@ export default function RankingList({ boats, window = "24h" }: { boats: BoatStat
     <div className="num" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
       <div style={{ fontSize: 14, fontWeight: b.rank === 1 ? 600 : 400 }}>{nm(b.dtf_nm)}</div>
       <div className="small" style={{ fontSize: 11, fontWeight: b.fleet_best24 && window === "24h" ? 600 : 400 }}>{run(b)}</div>
+      {b.gain24_nm != null && <div className={Math.round(b.gain24_nm) === 0 ? "small" : b.gain24_nm > 0 ? "gain" : "loss"} style={{ fontSize: 11 }}>{sgn(b.gain24_nm, 0)} nm on leader</div>}
       <div className={(b.vs_vdh_days ?? 0) > 0 ? "gain" : "loss"} style={{ fontSize: 11 }}>{sgn(b.vs_vdh_days)} d VDH</div>
     </div>
   </div>)}</div>;

@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import { nm, sgn, hhmm, dayMon, dateline, hoursText } from "../lib/format";
 describe("format", () => {
   it("formats numbers and signs", () => {
-    expect(nm(24523.4)).toBe("24,523"); expect(sgn(1.94)).toBe("+1.9"); expect(sgn(-0.6)).toBe("−0.6"); expect(sgn(0)).toBe("±0.0");
+    expect(nm(24523.4)).toBe("24,523"); expect(sgn(1.94)).toBe("+1.9"); expect(sgn(-0.6)).toBe("−0.6"); expect(sgn(0)).toBe("±0.0"); expect(sgn(0.4, 0)).toBe("±0"); expect(sgn(-0.4, 0)).toBe("±0"); expect(sgn(17.6, 0)).toBe("+18");   // the sign follows the rounded value: never "+0" or "−0"
   });
   it("formats UTC times", () => {
     expect(hhmm("2026-09-16T00:00:00+00:00")).toBe("0000"); expect(dayMon("2026-09-12T20:00:00Z")).toBe("12 Sep");

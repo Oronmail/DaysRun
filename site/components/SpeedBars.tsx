@@ -7,4 +7,4 @@ export default function SpeedBars({ log, width = 126, height = 24, max = 8 }: { 
       : <rect key={i} x={i * bw} y={height - Math.max(1.5, Math.min(v, max) / max * height)} width={bw - 1} height={Math.max(1.5, Math.min(v, max) / max * height)} rx={1} fill={i === log.length - 1 ? "var(--gold)" : "var(--bar)"} />)}
   </svg>;
 }
-export const BARS_LEGEND = "Speed bars: average speed on each 4-hour leg, last 7 days, 0–8 kt · gold = latest leg · short grey mark = missed report · vs VDH: days ahead of (+) or behind (−) Van Den Heede’s 2018 pace on the same race day";
+export const BARS_LEGEND = "Speed bars: average speed on each 4-hour leg, last 7 days, 0–8 kt · gold = latest leg · short grey mark = missed report · On leader: miles gained (+) or lost (−) on the leader in 24 hours, fix to fix · vs nearby: 24-hour run against the median of the boats within 150 nm, the same weather near enough · vs VDH: days ahead of (+) or behind (−) Van Den Heede’s 2018 pace on the same race day · a blank means no current fix";

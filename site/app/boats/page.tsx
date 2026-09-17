@@ -1,11 +1,15 @@
 // site/app/boats/page.tsx
 import Shell from "@/components/Shell";
-import { latestFleet, boatStats } from "@/lib/db";
+import { latestFleet, boatStats, boatPerf } from "@/lib/db";
 import { dateline, kn, nm } from "@/lib/format";
 export const revalidate = 900;
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2; };
 export default async function Page() {
-  const fleet = await latestFleet(); const boats = await boatStats(fleet.as_of);
+  const fleet = await latestFleet(); const [boats, perf] = await Promise.all([boatStats(fleet.as_of), boatPerf(fleet.as_of)]);
+  const P = new Map(perf.map(p => [p.team_id, p]));
+  // A design's figure is the legs-weighted mean over its boats, so a boat with three upwind legs does not count like one with thirty.
+  const band = (bs: typeof boats, k: "upwind" | "reaching" | "running") => { let n = 0, v = 0; for (const b of bs) { const z = P.get(b.team_id)?.pos_json[k]; if (z) { n += z.legs; v += z.speed_kn * z.legs; } } return n >= 5 ? `${kn(v / n)} kt` : "—"; };
+  const wind = (bs: typeof boats) => { const r = bs.map(b => P.get(b.team_id)?.wind_ratio).filter((x): x is number => x != null); return r.length ? `${Math.round(median(r) * 100)}%` : "—"; };
   const groups = new Map<string, typeof boats>(); for (const b of boats) groups.set(b.team.design_class ?? "Not listed", [...(groups.get(b.team.design_class ?? "Not listed") ?? []), b]);
   const ordered = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
   const W = 800, L = 190, pw = W - L - 40, lo = 3, hi = 6.5, X = (v: number) => L + (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo) * pw;
@@ -25,8 +29,8 @@ export default async function Page() {
         {boats.filter(b => b.restart_at).map(b => <div key={b.team_id} style={{ fontSize: 15, lineHeight: 1.55 }}>{b.team.first_name}’s {b.team.design_class} restarted after repairs; its figures count only from the restart, so they cover fewer days than the rest.</div>)}
         <div style={{ fontSize: 15, lineHeight: 1.55 }}>The comparison gets fairer over weeks. By the Southern Ocean each design will have a months-long record.</div></div>
     </div>
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">By design</div></div>
-      <table className="data"><thead><tr><th>Design</th><th className="r">Boats</th><th className="r">Best place</th><th className="r">Median speed, 7 d</th><th className="r">Best 24 h</th></tr></thead>
-        <tbody>{[...multi, ["Whole fleet", boats] as [string, typeof boats]].map(([g, bs]) => { const best = bs.reduce((a, b) => (b.best24_nm > a.best24_nm ? b : a), bs[0]); return <tr key={g}><td><span className="mont" style={{ fontWeight: 600 }}>{g}</span></td><td className="num r">{bs.length}</td><td className="num r">{Math.min(...bs.map(b => b.rank))}</td><td className="num r">{kn(median(bs.map(b => b.spd7 ?? 0)))} kt</td><td className="num r">{nm(best.best24_nm)} nm · {best.team.first_name}</td></tr>; })}</tbody></table></div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">By design</div><div className="small" style={{ fontStyle: "italic" }}>speed for the wind and point of sail: model wind, since the start · see <a href="/performance">Performance</a></div></div>
+      <table className="data"><thead><tr><th>Design</th><th className="r">Boats</th><th className="r">Best place</th><th className="r">Median speed, 7 d</th><th className="r">Speed for the wind</th><th className="r">Upwind</th><th className="r">Reaching</th><th className="r">Running</th><th className="r">Best 24 h</th></tr></thead>
+        <tbody>{[...multi, ["Whole fleet", boats] as [string, typeof boats]].map(([g, bs]) => { const best = bs.reduce((a, b) => (b.best24_nm > a.best24_nm ? b : a), bs[0]); return <tr key={g}><td><span className="mont" style={{ fontWeight: 600 }}>{g}</span></td><td className="num r">{bs.length}</td><td className="num r">{Math.min(...bs.map(b => b.rank))}</td><td className="num r">{kn(median(bs.map(b => b.spd7 ?? 0)))} kt</td><td className="num r">{wind(bs)}</td><td className="num r">{band(bs, "upwind")}</td><td className="num r">{band(bs, "reaching")}</td><td className="num r">{band(bs, "running")}</td><td className="num r">{nm(best.best24_nm)} nm · {best.team.first_name}</td></tr>; })}</tbody></table></div>
   </Shell>;
 }
