@@ -1,7 +1,7 @@
 // site/components/SkipperPerformance.tsx — how this one boat is sailed, next to the rest of the fleet. The same numbers as the
 // Performance page (worker/ggrstats/perf.py), read for a single skipper. Model wind and course made good: see Method.
 import Link from "next/link";
-import type { BoatPerf, BoatStat } from "@/lib/db";
+import type { BoatPerf, BoatStat, Duel } from "@/lib/db";
 import { kn, nm, sgn } from "@/lib/format";
 import { median, rankOf, restOfFleetBandSpeed, extraMiles, type Band } from "@/lib/perf";
 const BANDS: Band[] = ["upwind", "reaching", "running"];
@@ -12,7 +12,8 @@ function Row({ k, v, note, cls }: { k: string; v: React.ReactNode; note?: React.
   return <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, padding: "7px 0", borderBottom: "1px solid var(--hair)", alignItems: "baseline" }}>
     <div style={{ fontSize: 14 }}>{k}{note && <div className="small" style={{ fontSize: 12 }}>{note}</div>}</div><div className={`num ${cls ?? ""}`} style={{ fontSize: 15, whiteSpace: "nowrap" }}>{v}</div></div>;
 }
-export default function SkipperPerformance({ b, perf, leaderFirst }: { b: BoatStat; perf: BoatPerf[]; leaderFirst: string }) {
+export default function SkipperPerformance({ b, perf, leaderFirst, duels = [], names = new Map() }: { b: BoatStat; perf: BoatPerf[]; leaderFirst: string; duels?: Duel[]; names?: Map<number, string> }) {
+  const mine = duels.filter(d => d.ahead_id === b.team_id || d.behind_id === b.team_id);
   const p = perf.find(x => x.team_id === b.team_id); if (!p) return null;
   const first = b.team.first_name ?? b.team.name, ratios = perf.map(x => x.wind_ratio), rated = ratios.filter((x): x is number => x != null);
   const place = rankOf(ratios, p.wind_ratio), mid = median(rated), lo = Math.min(...rated), hi = Math.max(...rated);
@@ -44,6 +45,7 @@ export default function SkipperPerformance({ b, perf, leaderFirst }: { b: BoatSt
         <Row k={`On ${b.rank === 1 ? "the leader" : leaderFirst}, 24 h`} note={b.rank === 1 ? `${first} leads` : b.gain24_nm == null ? "no current fix" : "miles gained or lost, fix to fix"} v={b.gain24_nm == null ? "—" : `${sgn(b.gain24_nm, 0)} nm`} cls={tone(b.gain24_nm)} />
         <Row k="Against the boats nearby" note={b.vs_near_nm == null ? "fewer than two boats within 150 nm" : `24-hour run against ${b.near_n} boats within 150 nm`} v={b.vs_near_nm == null ? "—" : `${sgn(b.vs_near_nm, 0)} nm`} cls={tone(b.vs_near_nm)} />
         <Row k={`Off ${b.rank === 1 ? "the leader" : leaderFirst}’s track`} v={b.lever_nm == null ? "—" : b.lever_dir ? `${nm(b.lever_nm)} nm ${b.lever_dir}` : "on it"} />
+        {mine.map(d => { const ahead = d.ahead_id === b.team_id, other = names.get(ahead ? d.behind_id : d.ahead_id) ?? "another boat"; return <Row key={`${d.ahead_id}-${d.behind_id}`} k={`In a duel with ${other}`} note={d.gap72_nm == null ? undefined : `${Math.abs(Math.round(d.gap72_nm))} nm ${(d.gap72_nm > 0) === ahead ? "ahead" : "behind"} three days ago`} v={`${d.gap_nm < 1 ? "under 1" : Math.round(d.gap_nm)} nm ${ahead ? "ahead" : "behind"}`} cls={ahead ? "gain" : "loss"} />; })}
         <Row k="Extra miles sailed" note={extraMiles(b) == null ? (b.restart_at ? "not comparable after a restart" : undefined) : `${nm(b.sailed_nm)} sailed for ${nm(b.made_good_nm)} made good`} v={extraMiles(b) == null ? "—" : `${sgn(extraMiles(b)! * 100, 0)}%`} /></div>
     </div>
   </div>;

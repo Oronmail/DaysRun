@@ -10,7 +10,8 @@ import FleetMap, { type Marker } from "@/components/FleetMap";
 import { fleetView } from "@/lib/geo";
 import { TRACKER_URL } from "@/lib/text";
 import RaceChart from "@/components/RaceChart";
-import { latestFleet, boatStats, raceSetup, eventsRecent, dailyPlaces } from "@/lib/db";
+import Duels from "@/components/Duels";
+import { latestFleet, boatStats, raceSetup, eventsRecent, dailyPlaces, duelsAt } from "@/lib/db";
 import { dateline, nm, dayMon, dayMonTime } from "@/lib/format";
 
 function poi(setup: Awaited<ReturnType<typeof raceSetup>>, name: string) {
@@ -21,7 +22,7 @@ export type Win = "4h" | "24h" | "7d";
 const WINS: [Win, string, string][] = [["24h", "Last 24 h", "/"], ["4h", "Last 4 h", "/w/4h"], ["7d", "Last 7 days", "/w/7d"]];
 export default async function FleetPage({ window = "24h" }: { window?: Win }) {
   const fleet = await latestFleet();
-  const [boats, setup, events, days] = await Promise.all([boatStats(fleet.as_of), raceSetup(), eventsRecent(6), dailyPlaces()]);
+  const [boats, setup, events, days, duels] = await Promise.all([boatStats(fleet.as_of), raceSetup(), eventsRecent(6), dailyPlaces(), duelsAt(fleet.as_of)]);
   const lead = boats[0]; const best = boats.reduce((a, b) => (b.best24_nm > a.best24_nm ? b : a), boats[0]);
   const bestRun = boats.find(b => b.team_id === fleet.best_run24_team_id);
   const view = fleetView(boats, 358);
@@ -59,6 +60,7 @@ export default async function FleetPage({ window = "24h" }: { window?: Win }) {
           {events.map((e, i) => <div key={i} style={{ fontSize: 14, lineHeight: 1.35 }}>{e.title}<span className="small" style={{ fontSize: 12 }}> · {dayMonTime(e.at)}</span></div>)}</div>
       </aside>
     </div>
+    <Duels duels={duels} boats={boats} />
     <RaceChart days={days} boats={boats} />
   </Shell>;
 }

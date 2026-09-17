@@ -13,6 +13,7 @@ export type ConditionRow = { team_id: number; fix_at: string; wind_kn: number; g
 export type EventRow = { at: string; kind: string; team_id: number | null; title: string; body: string | null; page: string | null };
 export type PosBand = { legs: number; share: number; speed_kn: number; wind_kn: number };
 export type BoatPerf = { team_id: number; as_of: string; wind_ratio: number | null; wind_legs: number; pos_json: Partial<Record<"upwind" | "reaching" | "running", PosBand>>; sd7: number | null; share5_7: number | null; parked_h7: number | null; night_delta: number | null; n_night: number; n_day: number; legs: number; team: Team };
+export type Duel = { as_of: string; ahead_id: number; behind_id: number; gap_nm: number; gap24_nm: number | null; gap72_nm: number | null; lead_changes: number; passed_at: string | null; water_nm: number | null; side: string | null; series_json: [number, number][] | null };
 export type DailyPlace = { team_id: number; as_of: string; rank: number; gap_nm: number; stale: boolean };
 export type LegRow = { end_slot: string; speed_kn: number | null; dist_nm: number | null };
 
@@ -48,6 +49,10 @@ export async function boatStats(asOf: string): Promise<BoatStat[]> {
 // How each boat sails (worker/ggrstats/perf.py), for the Performance and Boats pages.
 export async function boatPerf(asOf: string): Promise<BoatPerf[]> {
   return ok(await supabase.from("boat_perf").select("*, team!inner(*)").eq("race_key", RACE).eq("as_of", asOf));
+}
+// The duels at a report (worker/ggrstats/duels.py): neighbours in the ranking within 15 nm, with three days of their gap.
+export async function duelsAt(asOf: string): Promise<Duel[]> {
+  return ok(await supabase.from("duel").select("*").eq("race_key", RACE).eq("as_of", asOf).order("gap_nm"));
 }
 // One row per boat per day (the 0000 UTC snapshot), for the race chart. A view in the database keeps this read small all race long.
 export async function dailyPlaces(): Promise<DailyPlace[]> {
