@@ -1,0 +1,53 @@
+# .github/workflows/worker.yml
+name: worker
+on:
+  schedule:
+    - cron: "12 0,4,8,12,16,20 * * *"     # main run, 12 min after each 4-hour report (UTC): capture + derive + weather + revalidate
+    - cron: "40 * * * *"                  # light capture every hour, to catch late fixes
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "ggrstats command"
+        type: choice
+        options: [all, capture, derive, weather, verify]
+        default: all
+      as_of:
+        description: "ISO UTC time for derive/verify (optional, e.g. 2026-09-16T00:00:00Z)"
+        default: ""
+concurrency:
+  group: ggrstats-worker
+  cancel-in-progress: false             # a late main run must finish; the hourly one queues behind it
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      REVALIDATE_URL: ${{ secrets.REVALIDATE_URL }}
+      REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
+      GGR_RACE_KEY: ggr2026
+      GGR_SNAPDIR: ${{ github.workspace }}/snapshots
+      GGR_USER_AGENT: "daysrun/0.1 (unofficial fan statistics; https://github.com/${{ github.repository }})"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: worker/pyproject.toml
+      - run: pip install -e worker
+      - name: Pick the command
+        id: pick
+        env:
+          AS_OF: ${{ inputs.as_of }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then cmd="${{ inputs.command }}"
+          elif [ "${{ github.event.schedule }}" = "12 0,4,8,12,16,20 * * *" ]; then cmd=all
+          else cmd=all; fi        # hourly: capture, then derive any slot the main run had to skip because YB had not published yet
+          args=""; [ -n "$AS_OF" ] && args="--as-of $AS_OF"
+          echo "cmd=$cmd" >> "$GITHUB_OUTPUT"; echo "args=$args" >> "$GITHUB_OUTPUT"
+      - name: Run
+        working-directory: worker
+        run: python -m ggrstats.run ${{ steps.pick.outputs.cmd }} ${{ steps.pick.outputs.args }}
