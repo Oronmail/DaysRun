@@ -34,4 +34,13 @@ export function reportLabel(nowMs: number, asOfIso: string): string {
   const sameDay = Math.floor(Math.max(nowMs, new Date(asOfIso).getTime()) / 86400000) === Math.floor(new Date(asOfIso).getTime() / 86400000);
   return `POSITIONS FROM THE ${hhmm(asOfIso)} UTC REPORT${sameDay ? "" : `, ${dayMon(asOfIso).toUpperCase()}`}`;
 }
+// The same two lines for a phone, where the long form wrapped over three lines above the title.
+export function datelineShort(nowMs: number, asOfIso: string, raceDayAtAsOf: number): string {
+  const asOf = new Date(asOfIso).getTime(), now = Math.max(nowMs, asOf), DAY = 86400000, iso = new Date(now).toISOString();
+  return `RACE DAY ${raceDayAtAsOf + Math.floor(now / DAY) - Math.floor(asOf / DAY)} · ${dayMon(iso).toUpperCase()} · ${hhmm(iso)} UTC`;
+}
+export function reportLabelShort(nowMs: number, asOfIso: string): string {
+  const sameDay = Math.floor(Math.max(nowMs, new Date(asOfIso).getTime()) / 86400000) === Math.floor(new Date(asOfIso).getTime() / 86400000);
+  return `FROM THE ${hhmm(asOfIso)} REPORT${sameDay ? "" : `, ${dayMon(asOfIso).toUpperCase()}`}`;
+}
 export const hoursText = (h: number) => { const m = Math.round(h * 60); return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} m`; };   // whole minutes first, so 59.995 h is 60 h 00 m, not 59 h 60 m

@@ -25,7 +25,7 @@ table.data tbody tr:nth-child(odd) { background: var(--panel); }
 .site-header { padding: 14px 56px; }
 .page-title { font-size: 52px; letter-spacing: 6px; }
 .tiles { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 16px; }
-.only-phone { display: none; }
+.only-phone, .only-phone-inline { display: none; } .only-desktop-flex { display: flex; } .page-head { padding-top: 40px; }
 .site-nav { display: flex; flex-wrap: wrap; gap: 28px; padding-top: 14px; font-size: 13px; font-weight: 600; }
 .site-nav a { text-decoration: none; padding-bottom: 4px; color: var(--graphite); border-bottom: 2px solid transparent; white-space: nowrap; }
 .site-nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--gold); }
@@ -49,7 +49,8 @@ table.data th.two { white-space: normal; line-height: 1.3; min-width: 58px; } ta
 .map-halo { paint-order: stroke; stroke: var(--panel); stroke-width: 3.5px; stroke-linejoin: round; }                       /* chart lettering stays readable over dots and coastline */
 main svg a { text-decoration: none; } .map-boat { cursor: pointer; } .map-name { opacity: 0; pointer-events: none; }                                            /* the charts: a boat's name shows while the pointer is on its dot */
 .map-boat:hover .map-name, a:focus-visible .map-boat .map-name { opacity: 1; }
-main svg[viewBox] { max-width: 100%; height: auto; }                /* charts scale down instead of overflowing */
+main svg[viewBox] { max-width: 100%; height: auto; }
+.panel > svg[viewBox] { width: 100%; }                               /* a chart in a panel fills it: drawn for 1440, the site is also read at 1700 and wider */                /* charts scale down instead of overflowing */
 /* Narrow screens. The column layouts are written inline on each page; .stack and .stack2 collapse them (the !important
    is what lets a stylesheet rule beat an inline style). Wide tables scroll sideways inside their own box. */
 @media (max-width: 900px) {
@@ -66,7 +67,8 @@ main svg[viewBox] { max-width: 100%; height: auto; }                /* charts sc
   .page-title { font-size: 30px; letter-spacing: 3px; }
   .pencil { font-size: 16px !important; text-align: left !important; max-width: none !important; }
   .tile { padding: 12px 14px; } .tile .v { font-size: 20px; } .tile .s { font-size: 12px; }
-  .only-desktop { display: none; } .only-phone { display: block; }
+  .only-desktop, .only-desktop-inline, .only-desktop-flex { display: none !important; } .only-phone { display: block; } .only-phone-inline { display: inline; }
+  .page-head { padding-top: 22px; } .site-header { padding-top: 10px; padding-bottom: 10px; } .pencil { display: none; }   /* a phone's first screen: the name, one line of status, the date, the title, the menu, then the numbers */
   .cards { grid-template-columns: minmax(0, 1fr); }
   .grid2 > aside { display: contents !important; } .grid2 .ord-first { order: -1; }   /* !important: the aside's flex is inline */
   .rule-title { flex-wrap: wrap; gap: 4px 16px; }

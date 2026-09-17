@@ -23,12 +23,8 @@ export default async function FleetPage({ window = "24h" }: { window?: Win }) {
   const lead = boats[0]; const best = boats.reduce((a, b) => (b.best24_nm > a.best24_nm ? b : a), boats[0]);
   const bestRun = boats.find(b => b.team_id === fleet.best_run24_team_id);
   const view = fleetView(boats, 358);
-  const markers: Marker[] = boats.map(b => ({ lat: b.lat, lon: b.lon, kind: b.rank === 1 ? "lead" : "boat", label: b.rank <= 2 || b.rank >= 15 ? b.team.first_name ?? undefined : undefined, side: "l", name: b.team.first_name ?? b.team.name, href: `/skipper/${b.team_id}` }));
-  const labelled = markers.filter(m => m.label);                // two labelled boats close together share one label instead of overprinting
-  for (let i = 0; i < labelled.length; i++) for (let j = i + 1; j < labelled.length; j++) {
-    const a = labelled[i], b = labelled[j];
-    if (a.label && b.label && Math.abs(a.lat - b.lat) < 1.2 && Math.abs(a.lon - b.lon) < 3) { a.label = `${a.label} · ${b.label}`; b.label = undefined; }
-  }
+  // No names on the chart: the pointer shows a boat's name, and four permanent labels out of sixteen said little (owner, 17 Sep).
+  const markers: Marker[] = boats.map(b => ({ lat: b.lat, lon: b.lon, kind: b.rank === 1 ? "lead" : "boat", name: b.team.first_name ?? b.team.name, href: `/skipper/${b.team_id}` }));
   return <Shell active="Fleet" dateline={<Dateline asOf={fleet.as_of} raceDay={fleet.race_day} />} title="FLEET POSITIONS" note={`${lead.team.first_name} ${nm(lead.next_mark_nm)} nm from ${lead.next_mark}`}>
     <Tiles items={[
       { k: "Leader", v: lead.team.name, s: `${lead.team.model} · ${nm(lead.dtf_nm)} nm to go` },

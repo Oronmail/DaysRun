@@ -1,6 +1,6 @@
 // site/__tests__/dateline.test.ts
 import { describe, it, expect } from "vitest";
-import { datelineNow, reportLabel } from "../lib/format";
+import { datelineNow, reportLabel, datelineShort, reportLabelShort } from "../lib/format";
 
 const at = (iso: string) => new Date(iso).getTime();
 
@@ -18,5 +18,11 @@ describe("the dateline carries the time it is, and says which report the numbers
   it("names the report, with its date only when that is not today's", () => {
     expect(reportLabel(at("2026-09-17T15:34:00Z"), "2026-09-17T12:00:00+00:00")).toBe("POSITIONS FROM THE 12:00 UTC REPORT");
     expect(reportLabel(at("2026-09-18T00:10:00Z"), "2026-09-17T20:00:00+00:00")).toBe("POSITIONS FROM THE 20:00 UTC REPORT, 17 SEP");
+  });
+  it("has a short form for a phone: two lines instead of three", () => {
+    expect(datelineShort(at("2026-09-17T20:54:10Z"), "2026-09-17T20:00:00+00:00", 11)).toBe("RACE DAY 11 · 17 SEP · 20:54 UTC");
+    expect(datelineShort(at("2026-09-18T00:10:00Z"), "2026-09-17T20:00:00+00:00", 11)).toBe("RACE DAY 12 · 18 SEP · 00:10 UTC");     // the day moves on at midnight here too
+    expect(reportLabelShort(at("2026-09-17T20:54:00Z"), "2026-09-17T20:00:00+00:00")).toBe("FROM THE 20:00 REPORT");
+    expect(reportLabelShort(at("2026-09-18T00:10:00Z"), "2026-09-17T20:00:00+00:00")).toBe("FROM THE 20:00 REPORT, 17 SEP");
   });
 });

@@ -1,6 +1,6 @@
 // site/components/Shell.tsx
 import Link from "next/link";
-import { SITE_NAME, dayMonTime } from "@/lib/format";
+import { SITE_NAME, dayMonTime, hhmm } from "@/lib/format";
 import { lastSync } from "@/lib/db";
 import Nav from "@/components/Nav";
 const NAV: [string, string][] = [["Fleet", "/"], ["Skippers", "/skippers"], ["Ghost race", "/ghosts"], ["Records", "/records"], ["Course & sprints", "/course"], ["Performance", "/performance"], ["Boats", "/boats"], ["Conditions", "/conditions"], ["Method", "/method"]];
@@ -10,10 +10,12 @@ export default async function Shell({ active, dateline, title, note, sub, childr
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <header className="site-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--header-bg)", color: "var(--header-fg)", flexWrap: "wrap", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}><span className="mont" style={{ fontSize: 13, fontWeight: 700, letterSpacing: 2.4 }}>{SITE_NAME.toUpperCase()}</span><span className="mont" style={{ fontSize: 13, fontWeight: 600, letterSpacing: 2.4, color: "var(--gold)" }}>GOLDEN GLOBE RACE 2026</span><span style={{ fontSize: 12, fontStyle: "italic", color: "var(--header-muted)" }}>unofficial statistics, made by fans</span></div>
-        <div className="num" style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--header-muted)" }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--gold)" }} />Positions every 4 h{sync && <> · last sync {dayMonTime(sync)} UTC</>}</div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}><span className="mont" style={{ fontSize: 13, fontWeight: 700, letterSpacing: 2.4 }}>{SITE_NAME.toUpperCase()}</span><span className="mont" style={{ fontSize: 13, fontWeight: 600, letterSpacing: 2.4, color: "var(--gold)" }}>GOLDEN GLOBE RACE 2026</span><span className="only-desktop-inline" style={{ fontSize: 12, fontStyle: "italic", color: "var(--header-muted)" }}>unofficial statistics, made by fans</span></div>
+        <div className="num only-desktop-flex" style={{ alignItems: "center", gap: 10, fontSize: 12, color: "var(--header-muted)" }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--gold)" }} />Positions every 4 h{sync && <> · last sync {dayMonTime(sync)} UTC</>}</div>
+        {/* A phone gets ONE line under the name instead of three: still "unofficial", still the time of the last sync. */}
+        <div className="only-phone" style={{ width: "100%", fontSize: 12, color: "var(--header-muted)" }}><span style={{ fontStyle: "italic" }}>unofficial statistics</span>{sync && <span className="num"> · last sync {hhmm(sync)} UTC</span>}</div>
       </header>
-      <div className="wrap" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", paddingTop: 40, gap: 24, flexWrap: "wrap" }}>
+      <div className="wrap page-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 24, flexWrap: "wrap" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div className="mont" style={{ fontSize: 12, fontWeight: 600, letterSpacing: 3, color: "var(--gold-text)" }}>{dateline}</div>
           <h1 className="mont page-title" style={{ fontWeight: 600, lineHeight: 1.05, margin: 0 }}>{title}</h1>
