@@ -95,6 +95,11 @@ def next_mark_for(fix):
             return name, lat, lon
     return config.MARKS[-1]
 
+def unreported(snapshot):
+    """True when no boat has a fix for the snapshot's report time: the report has not been captured yet. One boat without
+    a fix is a missed report; all of them is missing data, and the slot must not be stored."""
+    return all(b["stale"] for b in snapshot["boats"])
+
 def compute_snapshot(setup, fixes_by_team, T):
     start_at = min(t["start"] for t in setup["tags"])
     course_nm = setup["course"]["distance"] / 1.852

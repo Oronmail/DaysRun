@@ -3,7 +3,7 @@
 FIRST = {1: "Gunnar", 2: "Louis", 3: "Guido", 4: "Daniel", 5: "Guy", 6: "Damien", 8: "Selim", 9: "Pär",
          10: "Pat", 11: "Mara", 12: "Henry", 13: "Etienne", 14: "Isa", 15: "Matt", 16: "Andrea", 17: "Ertan"}
 # Full names where YB's text needs fixing (YB writes "Par Nyman" and a long bracketed form for Mara).
-FULL = {2: "Louis Kerdelhué", 9: "Pär Nyman", 11: "Mara Løvenskiold Kveseth"}   # GGR's official spellings; YB strips the diacritics
+FULL = {2: "Louis Kerdelhué", 9: "Pär Nyman", 11: "Mara Løvenskiold Kveseth", 940: "Kirsten Neuschäfer"}   # GGR's official spellings; YB strips the diacritics
 # Design name only (the builder's model name; a rig word only where it distinguishes, as the Biscay 36 was sold as sloop or
 # ketch). Yacht names live in YACHT and are set in italics on the pages, never in quotes.
 MODEL = {1: "Hans Christian 34", 2: "Biscay 36 ketch", 3: "Vancouver 34 Classic", 4: "Baba 35", 5: "Tashiba 36",

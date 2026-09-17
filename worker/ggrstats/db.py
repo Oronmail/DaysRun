@@ -10,7 +10,10 @@ def ts(unix):
     return None if unix is None else datetime.fromtimestamp(unix, timezone.utc)
 
 def connect(url=None):
-    return psycopg.connect(url or config.DATABASE_URL)
+    """TCP keepalives and a connect timeout: without them a connection the network has silently dropped (a laptop on a
+    hotspot, a recycled pooler node) leaves the client waiting for a reply for ever instead of failing so the next run retries."""
+    return psycopg.connect(url or config.DATABASE_URL, connect_timeout=20,
+                           keepalives=1, keepalives_idle=20, keepalives_interval=5, keepalives_count=3)
 
 def upsert_race(conn, key, setup):
     start = min(t["start"] for t in setup["tags"])
@@ -85,7 +88,9 @@ def _dur_s(text):
 def replace_snapshot(conn, key, as_of, snap):
     """Write one derived snapshot (see stats.compute_snapshot for the dict shape)."""
     a = ts(as_of)
-    with conn.cursor() as cur:
+    # One pipeline: about 50 statements per snapshot travel in a single round trip instead of 50 (each costs 80-150 ms
+    # between a GitHub runner or a laptop and the database; re-deriving a whole race would otherwise take hours).
+    with conn.pipeline(), conn.cursor() as cur:
         for t in ("restart", "boat_stat", "fleet_stat", "record_board", "sprint_result"):   # leg rows are upserted, not replaced
             cur.execute(f"delete from {t} where race_key=%s and as_of=%s", (key, a))
         for b in snap["boats"]:

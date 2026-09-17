@@ -131,3 +131,11 @@ def test_snapshot_survives_the_first_hours_of_the_race():
     first = stats.compute_snapshot(st, fx, grid.slot_time(grid.slot_of(START_AT) + 1))     # 6 Sep 1600, the backfill's first slot
     assert first["fleet"]["racing"] == len(first["boats"]) and first["race_day"] == 0
     assert stats.compute_snapshot(st, fx, START_AT - 30 * 86400)["boats"] == []             # before any fix (trackers ran in port for days before the gun): empty, not a crash
+
+def test_a_slot_nobody_has_reported_for_is_not_a_fleet_of_missed_reports():
+    """If the worker runs before YB has published a report (or from an archive that ends earlier), every boat looks stale.
+    That is missing data, not sixteen missed reports: the slot is skipped and derived by a later run."""
+    fx, st = fleet(), setup()
+    assert stats.unreported(stats.compute_snapshot(st, fx, T)) is False            # 15 of 16 reported at T
+    assert stats.unreported(stats.compute_snapshot(st, fx, T + 24 * 3600)) is True # the fixture's last fix is 16 Sep 1205: nobody has
+    assert stats.unreported({"boats": []}) is True

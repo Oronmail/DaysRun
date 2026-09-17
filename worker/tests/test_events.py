@@ -42,3 +42,16 @@ def test_derive_is_safe_on_an_empty_snapshot_and_a_missing_gust():
     assert events.derive(empty, [], []) == []
     g = [e for e in events.derive(snap(), [], [{"team_id": 9, "wind_kn": 36.0, "gust_kn": None}]) if e["kind"] == "gale"]
     assert len(g) == 1 and g[0]["title"] == "Pär is in gale-force wind: 36 kt"
+
+def test_best_run_events_fire_when_set_not_every_four_hours():
+    """Someone always holds the fleet's longest run of the last 24 hours, and a boat on a good day keeps its personal best
+    for several reports. The feed says so once: when the holder changes, and when a personal best is newly set."""
+    s = snap()
+    same = [{"team_id": b["id"], "rank": b["rank"], "best24_nm": b["best24_nm"], "stale": b["stale"], "next_mark": b["next_mark"],
+             "fleet_best24": b["fleet_best24"], "pb24": b["pb24"]} for b in s["boats"]]
+    kinds = [e["kind"] for e in events.derive(s, same, [])]
+    assert "fleet_best24" not in kinds and "pb24" not in kinds
+    other = [dict(p, fleet_best24=(p["team_id"] == 6), pb24=False) for p in same]           # yesterday Damien held it
+    ev = events.derive(s, other, [])
+    assert [e["team_id"] for e in ev if e["kind"] == "fleet_best24"] == [12]                 # Henry takes it: one event
+    assert len([e for e in ev if e["kind"] == "pb24"]) == 5

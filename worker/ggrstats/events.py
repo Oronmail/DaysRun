@@ -17,9 +17,10 @@ def derive(snapshot, previous, conditions):
         return out
     for b in boats:
         run = round(b["w24"]["dist_nm"]) if b["w24"] else None
-        if b["fleet_best24"] and run is not None:
+        was = prev.get(b["id"], {})                     # said once: when the holder changes, when a best is newly set
+        if b["fleet_best24"] and run is not None and not was.get("fleet_best24"):
             add("fleet_best24", b["id"], f"{b['first']} sails the longest run of the last 24 hours: {run} nm" + (", also a personal best" if run >= round(b["best24_nm"]) else ""), page="Records")
-        elif b["pb24"] and run is not None:
+        elif b["pb24"] and run is not None and not was.get("pb24") and not b["fleet_best24"]:
             add("pb24", b["id"], f"{b['first']} sets a personal best 24-hour run: {run} nm", page="Records")
         if b["stale"] and not prev.get(b["id"], {}).get("stale"):
             add("missed_report", b["id"], f"{b['first']}’s tracker skipped the {datetime.fromtimestamp(T, timezone.utc).strftime('%H%M')} report",
