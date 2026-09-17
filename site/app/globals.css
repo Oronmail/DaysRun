@@ -26,6 +26,11 @@ table.data tbody tr:nth-child(odd) { background: var(--panel); }
 .page-title { font-size: 52px; letter-spacing: 6px; }
 .tiles { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 16px; }
 .only-phone { display: none; }
+.who-link { color: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }   /* a skipper's name opens that skipper's page: it has to look like a link */
+.who-link:hover { text-decoration-color: var(--ink); }
+.cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.card { display: flex; flex-direction: column; gap: 6px; padding: 16px 18px; background: var(--panel); border-top: 2px solid var(--gold); color: inherit; text-decoration: none; }
+.card:hover { outline: 1px solid var(--ink); }
 main svg[viewBox] { max-width: 100%; height: auto; }                /* charts scale down instead of overflowing */
 /* Narrow screens. The column layouts are written inline on each page; .stack and .stack2 collapse them (the !important
    is what lets a stylesheet rule beat an inline style). Wide tables scroll sideways inside their own box. */
@@ -34,6 +39,7 @@ main svg[viewBox] { max-width: 100%; height: auto; }                /* charts sc
   .grid2 { grid-template-columns: minmax(0, 1fr); }
   .stack { grid-template-columns: minmax(0, 1fr) !important; gap: 24px !important; }
   .stack2, .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   table.data { display: block; max-width: 100%; overflow-x: auto; }
   table.data td, table.data th { padding-left: 4px; padding-right: 4px; }
 }
@@ -43,6 +49,7 @@ main svg[viewBox] { max-width: 100%; height: auto; }                /* charts sc
   .pencil { font-size: 16px !important; text-align: left !important; max-width: none !important; }
   .tile { padding: 12px 14px; } .tile .v { font-size: 20px; } .tile .s { font-size: 12px; }
   .only-desktop { display: none; } .only-phone { display: block; }
+  .cards { grid-template-columns: minmax(0, 1fr); }
   .grid2 > aside { display: contents !important; } .grid2 .ord-first { order: -1; }   /* !important: the aside's flex is inline */
   .rule-title { flex-wrap: wrap; gap: 4px 16px; }
 }

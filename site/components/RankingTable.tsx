@@ -10,7 +10,7 @@ export function Tri({ n }: { n: number }) {
 }
 export function Who({ b, sub = true }: { b: BoatStat; sub?: boolean }) {
   return <div style={{ whiteSpace: "nowrap" }}>
-    <div className="mont" style={{ fontSize: 13, fontWeight: 600 }}><Link href={`/skipper/${b.team_id}`} style={{ color: "inherit", textDecoration: "none" }}>{b.team.name}</Link> <span style={{ fontWeight: 500, color: "var(--graphite)", fontSize: 11 }}>{b.team.country_code}</span></div>
+    <div className="mont" style={{ fontSize: 13, fontWeight: 600 }}><Link href={`/skipper/${b.team_id}`} className="who-link">{b.team.name}</Link> <span style={{ fontWeight: 500, color: "var(--graphite)", fontSize: 11 }}>{b.team.country_code}</span></div>
     {sub && <div style={{ fontStyle: "italic", fontSize: 13, color: "var(--graphite)" }}>{b.team.model}</div>}
     {b.stale && <div className="mont loss" style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.6 }}>MISSED {hhmm(b.as_of)} REPORT · LAST FIX {hhmm(b.last_fix_at)} UTC</div>}
     {b.restart_at && <div className="mont" style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.6, color: "var(--graphite)" }}>RESTARTED {dayMon(b.restart_at).toUpperCase()} AFTER REPAIRS</div>}

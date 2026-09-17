@@ -1,4 +1,5 @@
 // site/lib/db.ts — read-only access through the anon key; RLS allows select only.
+import { cache } from "react";
 import { createClient } from "@supabase/supabase-js";
 export const RACE = process.env.NEXT_PUBLIC_RACE_KEY ?? "ggr2026";
 export const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
@@ -24,6 +25,13 @@ async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data
     if (rows.length < size) return out;
   }
 }
+
+// The worker stores YB's leaderboard on every run, so the newest fetched_at is the time of the last successful sync with YB.
+// cache(): the header asks once per render, however many components ask. If the worker stops, this time stops too — on purpose.
+export const lastSync = cache(async (): Promise<string | null> => {
+  const rows = ok(await supabase.from("leaderboard_snap").select("fetched_at").eq("race_key", RACE).order("fetched_at", { ascending: false }).limit(1)) as { fetched_at: string }[];
+  return rows[0]?.fetched_at ?? null;
+});
 
 export async function latestFleet(): Promise<FleetStat> {
   return ok(await supabase.from("fleet_stat").select("*").eq("race_key", RACE).order("as_of", { ascending: false }).limit(1).single());

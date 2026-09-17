@@ -1,5 +1,6 @@
 // site/app/skipper/[id]/page.tsx
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import Shell from "@/components/Shell";
 import Tiles from "@/components/Tiles";
 import SpeedBars from "@/components/SpeedBars";
@@ -21,7 +22,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const view = fleetView(boats, 506);
   const markers: Marker[] = boats.map(x => ({ lat: x.lat, lon: x.lon, kind: x.team_id === id ? "hi" : "dim", label: x.team_id === id ? x.team.first_name ?? undefined : undefined }));
   const lead = boats[0];
-  return <Shell active="Fleet" dateline={`FLEET / SKIPPER · ${b.team.country_code} · SAIL ${b.team.sail}`} title={b.team.name.toUpperCase()} sub={<><i>{b.team.yacht}</i> · {b.team.model} · {ord(b.rank)} of {fleet.racing} at race day {fleet.race_day}</>} note={`${sgn(b.vs_kirsten_days)} days on Neuschäfer’s 2022 pace`}>
+  return <Shell active="Skippers" dateline={`SKIPPERS · ${b.team.country_code} · SAIL ${b.team.sail}`} title={b.team.name.toUpperCase()} sub={<><i>{b.team.yacht}</i> · {b.team.model} · {ord(b.rank)} of {fleet.racing} at race day {fleet.race_day}</>} note={`${sgn(b.vs_kirsten_days)} days on Neuschäfer’s 2022 pace`}>
     <Tiles items={[
       { k: "Place", v: ord(b.rank), s: `${b.rank_change === 0 ? "no change" : (b.rank_change > 0 ? `up ${b.rank_change}` : `down ${-b.rank_change}`)} in 24 h · ${b.rank === 1 ? (boats[1] ? `${nm(boats[1].gap_nm)} nm ahead of ${boats[1].team.first_name}` : "leading") : `${nm(b.gap_nm)} nm behind ${lead.team.first_name}`}` },
       { k: "To go", v: `${nm(b.dtf_nm)} nm`, s: `${nm(b.made_good_nm)} nm made good since the start` },
@@ -47,6 +48,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Splits</div></div>
         {splits.map((s: { checkpoint_id: number; checkpoint_index: number; stop_at: string; duration_s: number; delta_best_s: number }) => <div key={s.checkpoint_id} style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 15 }}>YB checkpoint {s.checkpoint_index}</span><span className="num">{Math.floor(s.duration_s / 86400)} d {Math.floor(s.duration_s % 86400 / 3600)} h {Math.floor(s.duration_s % 3600 / 60)} m</span></div>)}
         {splits.length === 0 && <div className="small">No checkpoint passed yet.</div>}</div>
+    </div>
+    <div className="mont" style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", fontSize: 13, fontWeight: 600, borderTop: "1px solid var(--rule)", paddingTop: 14 }}>
+      <span>{boats[b.rank - 2] ? <Link href={`/skipper/${boats[b.rank - 2].team_id}`}>← {ord(b.rank - 1)} · {boats[b.rank - 2].team.name}</Link> : null}</span>
+      <Link href="/skippers">All skippers</Link>
+      <span>{boats[b.rank] ? <Link href={`/skipper/${boats[b.rank].team_id}`}>{ord(b.rank + 1)} · {boats[b.rank].team.name} →</Link> : null}</span>
     </div>
   </Shell>;
 }

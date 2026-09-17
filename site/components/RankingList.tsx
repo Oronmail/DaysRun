@@ -10,7 +10,7 @@ export default function RankingList({ boats, window = "24h" }: { boats: BoatStat
   return <div>{boats.map(b => <div key={b.team_id} style={{ display: "grid", gridTemplateColumns: "26px minmax(0,1fr) auto", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--hair)", alignItems: "start" }}>
     <div className="num" style={{ fontSize: 15, fontWeight: 500, paddingTop: 1 }}>{b.rank}</div>
     <div style={{ minWidth: 0 }}>
-      <div className="mont" style={{ fontSize: 14, fontWeight: 600 }}><Link href={`/skipper/${b.team_id}`} style={{ color: "inherit", textDecoration: "none" }}>{b.team.name}</Link>{b.rank_change !== 0 && <span className="num" style={{ fontSize: 11, marginLeft: 6 }}><Tri n={b.rank_change} /></span>}</div>
+      <div className="mont" style={{ fontSize: 14, fontWeight: 600 }}><Link href={`/skipper/${b.team_id}`} className="who-link">{b.team.name}</Link>{b.rank_change !== 0 && <span className="num" style={{ fontSize: 11, marginLeft: 6 }}><Tri n={b.rank_change} /></span>}</div>
       <div style={{ fontStyle: "italic", fontSize: 13, color: "var(--graphite)" }}>{b.team.model}</div>
       {b.stale && <div className="mont loss" style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.6 }}>MISSED {hhmm(b.as_of)} · FIX {hhmm(b.last_fix_at)}</div>}
       {b.restart_at && <div className="mont" style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.6, color: "var(--graphite)" }}>RESTARTED {dayMon(b.restart_at).toUpperCase()} AFTER REPAIRS</div>}
