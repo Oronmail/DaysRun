@@ -42,12 +42,15 @@ def cmd_derive(conn, race, as_of, fixes=None):
     if stats.unreported(snapshot):                   # before the first fix, or YB has not published this report yet
         log.info("derive %s: no boat has reported for this slot yet, skipped (a later run catches up)", datetime.fromtimestamp(as_of, timezone.utc))
         return snapshot
+    previous = db.previous_boat_stats(conn, race, as_of)
+    if not stats.ready_to_publish(snapshot, {p["team_id"] for p in previous if not p["stale"]}, time.time() - as_of):
+        log.info("derive %s: part of the fleet has not reported yet, waiting for the next run (12 minutes at most)", datetime.fromtimestamp(as_of, timezone.utc))
+        return snapshot
     winds = db.load_winds(conn, race)                 # small; read each time so the pass after the weather call sees it
     start_at = min(t["start"] for t in setup["tags"])
     for b in snapshot["boats"]:
         t0 = b["restart"]["first_out_at"] if b["restart"] else 0
         b["perf"] = perf.compute(fixes[b["id"]], start_at, t0, as_of, winds.get(b["id"], {}))
-    previous = db.previous_boat_stats(conn, race, as_of)
     db.replace_snapshot(conn, race, as_of, snapshot)
     cond = [dict(zip(("team_id", "wind_kn", "gust_kn"), r)) for r in conn.execute(
         "select team_id, wind_kn, gust_kn from conditions where race_key=%s and fix_at=%s", (race, db.ts(as_of)))]

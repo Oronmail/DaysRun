@@ -99,6 +99,13 @@ def unreported(snapshot):
     a fix is a missed report; all of them is missing data, and the slot must not be stored."""
     return all(b["stale"] for b in snapshot["boats"])
 
+def ready_to_publish(snapshot, previously_fresh, age_s, patience_s=12 * 60):
+    """The worker starts a few minutes after a report, to have it on the site quickly. YB does not receive the whole fleet in the
+    same minute, so a young report is published only once every boat that had a current fix at the previous report has one now;
+    after patience_s it is published as it stands, and a boat still silent has then missed the report."""
+    fresh = {b["id"] for b in snapshot["boats"] if not b["stale"]}
+    return age_s >= patience_s or set(previously_fresh) <= fresh
+
 def compute_snapshot(setup, fixes_by_team, T):
     start_at = min(t["start"] for t in setup["tags"])
     course_nm = setup["course"]["distance"] / 1.852
