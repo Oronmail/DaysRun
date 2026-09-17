@@ -6,8 +6,8 @@ describe("format", () => {
     expect(nm(24523.4)).toBe("24,523"); expect(sgn(1.94)).toBe("+1.9"); expect(sgn(-0.6)).toBe("−0.6"); expect(sgn(0)).toBe("±0.0"); expect(sgn(0.4, 0)).toBe("±0"); expect(sgn(-0.4, 0)).toBe("±0"); expect(sgn(17.6, 0)).toBe("+18");   // the sign follows the rounded value: never "+0" or "−0"
   });
   it("formats UTC times", () => {
-    expect(hhmm("2026-09-16T00:00:00+00:00")).toBe("0000"); expect(dayMon("2026-09-12T20:00:00Z")).toBe("12 Sep");
-    expect(dateline("2026-09-16T00:00:00Z", 10)).toBe("RACE DAY 10 · WEDNESDAY 16 SEP 2026 · 0000 UTC");
+    expect(hhmm("2026-09-16T00:00:00+00:00")).toBe("00:00"); expect(hhmm("2026-09-16T07:22:31Z")).toBe("07:22"); expect(dayMon("2026-09-12T20:00:00Z")).toBe("12 Sep");
+    expect(dateline("2026-09-16T00:00:00Z", 10)).toBe("RACE DAY 10 · WEDNESDAY 16 SEP 2026 · 00:00 UTC");
     expect(hoursText(59.1)).toBe("59 h 06 m");
     expect(hoursText(59.995)).toBe("60 h 00 m");   // minutes never print as 60
   });

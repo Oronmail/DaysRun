@@ -34,7 +34,7 @@ export default function RaceChart({ days, boats }: { days: DailyPlace[]; boats: 
   if ([...place.values()].every(p => p.length < 2)) return null;
   const n = boats.length, gmax = Math.ceil(Math.max(...[...gap.values()].flat().map(p => p.v), 100) / 100) * 100, leaderId = boats[0].team_id;
   return <div className="stack" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 40 }}>
-    <Chart title="Places, day by day" note="at 0000 UTC each day · hover a line" series={place} names={names} leaderId={leaderId} ymax={n} invert yticks={[1, 4, 8, 12, n]} ylab={v => String(v)} />
+    <Chart title="Places, day by day" note="at 00:00 UTC each day · hover a line" series={place} names={names} leaderId={leaderId} ymax={n} invert yticks={[1, 4, 8, 12, n]} ylab={v => String(v)} />
     <Chart title="Gap to the leader" note="nautical miles behind, by distance to finish" series={gap} names={names} leaderId={leaderId} ymax={gmax} yticks={[0, gmax / 4, gmax / 2, 3 * gmax / 4, gmax]} ylab={v => (v === 0 ? "0" : `−${Math.round(v)}`)} />
   </div>;
 }

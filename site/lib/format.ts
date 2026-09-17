@@ -12,7 +12,7 @@ export function sgn(n: number | null | undefined, d = 1): string {
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 export function hhmm(iso: string | null | undefined): string {
   if (!iso) return "—"; const d = new Date(iso);
-  return `${String(d.getUTCHours()).padStart(2, "0")}${String(d.getUTCMinutes()).padStart(2, "0")}`;
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;     // 20:00, not 2000: the owner and the first readers found the run-together form confusing (17 Sep 2026)
 }
 export function dayMon(iso: string | null | undefined): string {
   if (!iso) return "—"; const d = new Date(iso); return `${String(d.getUTCDate()).padStart(2, "0")} ${MON[d.getUTCMonth()]}`;

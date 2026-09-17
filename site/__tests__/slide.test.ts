@@ -1,6 +1,6 @@
 // site/__tests__/slide.test.ts — the daily slide's numbers and sentences (lib/slide.ts). The cases are the fleet of 17 Sep 2026 1600 UTC.
 import { describe, it, expect } from "vitest";
-import { sixLegs, columns, biggestRun, fleetAverage, fastestLeg, leaderLine, passLine, passesTile, meanWinds } from "../lib/slide";
+import { sixLegs, columns, biggestRun, fleetAverage, fastestLeg, leaderLine, ghostLine } from "../lib/slide";
 import { placeGroups } from "../lib/moves";
 
 const AS_OF = "2026-09-17T16:00:00+00:00", H4 = 4 * 3600 * 1000, T = new Date(AS_OF).getTime();
@@ -24,10 +24,10 @@ describe("the six legs of a day", () => {
 });
 
 describe("the columns", () => {
-  const cols = columns(NOW, BEFORE, ALL, AS_OF, new Map([[12, 20], [6, 17]]));
+  const cols = columns(NOW, BEFORE, ALL, AS_OF);
   it("stand in order of the day's run, longest first", () => { expect(cols.map(c => c.first)).toEqual(["Henry", "Damien", "Andrea", "Matt"]); });
-  it("carry what a column shows: miles, average speed, place, the day before, the wind", () => {
-    const h = cols[0]; expect([h.run, h.place, h.dayBefore, h.wind, h.pb]).toEqual([176, 10, 173, 20, true]); expect(h.kt).toBeCloseTo(7.33, 2);
+  it("carry what a column shows: miles, place, the day before, a personal best", () => {
+    const h = cols[0]; expect([h.run, h.place, h.dayBefore, h.pb]).toEqual([176, 10, 173, true]);
   });
   it("show a silent tracker as a bridged block: the run less the legs that are known", () => {
     const a = cols.find(c => c.first === "Andrea")!, m = cols.find(c => c.first === "Matt")!;
@@ -35,16 +35,16 @@ describe("the columns", () => {
   });
   it("draw no 'day before' tick from a day the boat had no current fix", () => { expect(cols.find(c => c.first === "Andrea")!.dayBefore).toBeNull(); });
   it("put a boat without a current fix last, whatever its run says", () => {
-    const c = columns([...NOW, boat(1, "Gunnar", 2, 190, { stale: true })], BEFORE, ALL, AS_OF, new Map());
+    const c = columns([...NOW, boat(1, "Gunnar", 2, 190, { stale: true })], BEFORE, ALL, AS_OF);
     expect(c[c.length - 1].first).toBe("Gunnar"); expect(c[c.length - 1].stale).toBe(true);
   });
 });
 
 describe("the three numbers at the top", () => {
-  const cols = columns(NOW, BEFORE, ALL, AS_OF, new Map());
+  const cols = columns(NOW, BEFORE, ALL, AS_OF);
   it("the biggest run is the longest of the runs with all six legs", () => {
     expect(biggestRun(cols)?.first).toBe("Henry");
-    expect(biggestRun(columns([boat(16, "Andrea", 3, 300)], [], ALL, AS_OF, new Map()))).toBeNull();      // a straight line across a silent tracker is not a record
+    expect(biggestRun(columns([boat(16, "Andrea", 3, 300)], [], ALL, AS_OF))).toBeNull();      // a straight line across a silent tracker is not a record
   });
   it("the fleet average counts the same boats: a current fix and all six legs", () => { expect(fleetAverage(cols)).toBeCloseTo((176 + 171) / 2, 9); expect(fleetAverage([])).toBeNull(); });
   it("the fastest leg is the fastest single leg of the 24 hours, whoever sailed it", () => {
@@ -69,28 +69,17 @@ describe("on the leader", () => {
   it("rounds before it judges, so +0.4 is not a gain", () => { expect(leaderLine(fleet([["Henry", 0.4], ["Mara", -7]]))?.text).toBe("lost the least on Damien: nobody gained"); });
 });
 
-describe("passes and places", () => {
-  it("turns the feed's present tense into the slide's past, and keeps the chase", () => {
-    expect(passLine("Louis passes Guy and leads by 2 nm, after trailing by 16 nm three days ago")).toBe("Louis passed Guy, after trailing by 16 nm");
-    expect(passLine("Henry passes Mara and leads by 3 nm")).toBe("Henry passed Mara");
-    expect(passLine("Something the pattern does not know")).toBe("Something the pattern does not know");
-  });
-  it("shows the two newest passes, or the closest duel on a day without one", () => {
-    expect(passesTile(["Louis passes Guy and leads by 2 nm, after trailing by 16 nm three days ago", "Henry passes Mara and leads by 3 nm", "Pär passes Selim and leads by 5 nm"], null)).toEqual(["Louis passed Guy, after trailing by 16 nm", "Henry passed Mara"]);
-    expect(passesTile([], { ahead: "Etienne", behind: "Daniel", gap_nm: 0.6 })).toEqual(["No pass in 24 hours", "Closest: Etienne leads Daniel by under 1 nm"]);
-    expect(passesTile([], { ahead: "Guido", behind: "Louis", gap_nm: 8.5 })).toEqual(["No pass in 24 hours", "Closest: Guido leads Louis by 9 nm"]);
-    expect(passesTile([], null)).toEqual(["No pass in 24 hours"]);
+describe("against the 2018 winner, and places", () => {
+  it("says where the leader stands against Van Den Heede's 2018 run on the same race day, in miles, and how many boats are ahead of it", () => {
+    expect(ghostLine("Damien", 138.4, 2, 16, 11)).toEqual({ head: "Damien is 138 nm ahead", rest: "of where Van Den Heede, the 2018 winner, was on day 11 · 2 of 16 boats are ahead of that pace" });
+    expect(ghostLine("Damien", -52.2, 0, 16, 40)).toEqual({ head: "Damien is 52 nm behind", rest: "where Van Den Heede, the 2018 winner, was on day 40 · no boat is ahead of that pace" });
+    expect(ghostLine("Damien", 300, 16, 16, 12)?.rest).toBe("of where Van Den Heede, the 2018 winner, was on day 12 · the whole fleet is ahead of that pace");
+    expect(ghostLine("Damien", 10, 1, 15, 12)?.rest).toBe("of where Van Den Heede, the 2018 winner, was on day 12 · 1 of 15 boats is ahead of that pace");
+    expect(ghostLine("Damien", 0.3, 1, 16, 12)?.head).toBe("Damien is level");
+    expect(ghostLine("Damien", null, 0, 16, 12)).toBeNull();          // no replay position for this day: say nothing
   });
   it("groups the places gained and lost like the feed does, among boats with a current fix", () => {
     const g = placeGroups([boat(1, "A", 1, 1, { rank_change: 0 }), boat(2, "B", 2, 1, { rank_change: 1 }), boat(3, "C", 3, 1, { rank_change: -1 }), boat(4, "D", 4, 1, { rank_change: 5, stale: true })]);
     expect(g).toEqual({ ups: [[1, ["B"]]], downs: [[1, ["C"]]] });
-  });
-});
-
-describe("the wind under a column", () => {
-  it("is the mean of the model wind at the day's reports", () => {
-    const c = (team_id: number, h: number, wind_kn: number | null) => ({ team_id, fix_at: new Date(T - h * 3600 * 1000).toISOString(), wind_kn });
-    const w = meanWinds([c(12, 0, 22), c(12, 4, 18), c(12, 30, 40), c(6, 8, null)], AS_OF);
-    expect(w.get(12)).toBe(20); expect(w.has(6)).toBe(false);
   });
 });

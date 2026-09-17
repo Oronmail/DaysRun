@@ -13,7 +13,7 @@ import { TRACKER_URL } from "@/lib/text";
 import RaceChart from "@/components/RaceChart";
 import Duels from "@/components/Duels";
 import { latestFleet, boatStats, raceSetup, eventsRecent, dailyPlaces, duelsAt } from "@/lib/db";
-import { dateline, nm, hhmm, dayMon, dayMonTime } from "@/lib/format";
+import { nm, hhmm, dayMon, dayMonTime } from "@/lib/format";
 
 export type Win = "4h" | "24h" | "7d";
 const WINS: [Win, string, string][] = [["24h", "Last 24 h", "/"], ["4h", "Last 4 h", "/w/4h"], ["7d", "Last 7 days", "/w/7d"]];
@@ -44,7 +44,7 @@ export default async function FleetPage({ window = "24h" }: { window?: Win }) {
         <div className="small" style={{ fontSize: 12 }}>{BARS_LEGEND}{bestRun && ` · ${bestRun.team.first_name} sailed the fleet's longest run of the last 24 hours`}</div>
       </div>
       <aside style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-        <div className="ord-first" style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">The fleet at {dateline(fleet.as_of, fleet.race_day).slice(-8)}</div></div>
+        <div className="ord-first" style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">The fleet at {hhmm(fleet.as_of)} UTC</div></div>
           <div style={{ border: "1px solid var(--ink)", padding: 6, background: "var(--panel)" }}><FleetMap view={view} course={setup.raw_setup.course.nodes} markers={markers} next={{ name: lead.next_mark, from: lead, text: `${lead.next_mark} ${nm(lead.next_mark_nm)} nm` }} /></div>
           <div className="small" style={{ fontSize: 12 }}>Point at a boat for the skipper’s name. Positions here are the 4-hourly reports. To follow the boats live: <a href={TRACKER_URL} target="_blank" rel="noopener noreferrer">the official GGR tracker ↗</a></div></div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><div className="rule-title"><div className="label">Next mark</div></div>

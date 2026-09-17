@@ -3,7 +3,7 @@
 import Shell from "@/components/Shell";
 import Dateline from "@/components/Dateline";
 import { latestFleet, boatStats, recordBoard } from "@/lib/db";
-import { dateline, nm, kn, dayMon, dayMonTime } from "@/lib/format";
+import { nm, kn, hhmm, dayMon, dayMonTime } from "@/lib/format";
 export type RecWin = "7d" | "30d" | "race";
 export default async function RecordsPage({ win = "race" }: { win?: RecWin }) {
   const fleet = await latestFleet(); const [boats, recs] = await Promise.all([boatStats(fleet.as_of), recordBoard(fleet.as_of)]);
@@ -23,7 +23,7 @@ export default async function RecordsPage({ win = "race" }: { win?: RecWin }) {
       {board("best7", "Best 7-day run", "nm", v => nm(v), "42 consecutive 4-hour legs at sea, none missing. Possible since race day 8; a boat that restarted needs seven days from its restart.")}
     </div>
     <div className="panel stack" style={{ borderLeft: "4px solid var(--gold)", display: "grid", gridTemplateColumns: "280px minmax(0,1fr)", gap: 32 }}>
-      <div><div className="label">The last 24 hours</div><div className="small">New marks set in the 24 hours to {dateline(fleet.as_of, fleet.race_day).slice(-8)}.</div></div>
+      <div><div className="label">The last 24 hours</div><div className="small">New marks set in the 24 hours to {hhmm(fleet.as_of)} UTC.</div></div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 28 }}>{pbs.map(b => <div key={b.team_id} style={{ display: "flex", flexDirection: "column", gap: 2 }}><span className="mont" style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1, color: b.fleet_best24 ? "var(--gold-text)" : "var(--graphite)" }}>{b.fleet_best24 ? "FLEET BEST + PERSONAL BEST" : "PERSONAL BEST"}</span><span className="mont" style={{ fontSize: 15, fontWeight: 600 }}>{b.team.first_name}</span><span className="num" style={{ fontSize: 20 }}>{nm(b.run24_nm)} nm</span></div>)}{pbs.length === 0 && <span className="small">No new marks.</span>}</div>
     </div>
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Personal bests</div><div className="small" style={{ fontStyle: "italic" }}>all {fleet.racing}, alphabetical</div></div>
