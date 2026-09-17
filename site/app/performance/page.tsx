@@ -4,6 +4,7 @@ import Tiles from "@/components/Tiles";
 import { Who } from "@/components/Who";
 import { latestFleet, boatStats, boatPerf, type BoatPerf, type BoatStat } from "@/lib/db";
 import { dateline, kn, nm, sgn } from "@/lib/format";
+import { extraMiles } from "@/lib/perf";
 export const revalidate = 900;
 const pct = (v: number | null | undefined) => (v == null ? "—" : `${Math.round(v * 100)}%`);
 const BANDS = ["upwind", "reaching", "running"] as const;
@@ -42,7 +43,7 @@ export default async function Page() {
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Steadiness, the dark, and the long road</div><div className="small" style={{ fontStyle: "italic" }}>4-hour legs · last 7 days unless stated</div></div>
       <table className="data"><thead><tr><th>Skipper</th><th className="r">Spread ± kt</th><th className="r">Legs at 5 kt or more</th><th className="r">Hours under 2 kt</th><th className="r">Night − day kt</th><th className="r">Sailed nm</th><th className="r">Made good nm</th><th className="r">Extra</th></tr></thead>
         <tbody>{rows.map(({ b, p }) => <tr key={b.team_id}><td><Who b={b} sub={false} /></td><td className="num r">{p.sd7 == null ? "—" : `±${kn(p.sd7)}`}</td><td className="num r">{pct(p.share5_7)}</td><td className={`num r ${(p.parked_h7 ?? 0) >= 8 ? "loss" : ""}`}>{p.parked_h7 == null ? "—" : p.parked_h7}</td>
-          <td className="num r" title={`${p.n_night} night legs, ${p.n_day} day legs since the start`}>{sgn(p.night_delta)}</td><td className="num r">{nm(b.sailed_nm)}</td><td className="num r">{nm(b.made_good_nm)}</td><td className="num r">{b.made_good_nm > 0 ? `+${Math.round((b.sailed_nm / b.made_good_nm - 1) * 100)}%` : "—"}</td></tr>)}</tbody></table>
-      <div className="small" style={{ fontSize: 12 }}>Night − day: average leg speed between 2000 and 0600 local solar time minus the rest, since the start; it needs six legs of each. Extra: miles sailed along the track over miles made good toward the finish, since the start or the restart.</div></div>
+          <td className="num r" title={`${p.n_night} night legs, ${p.n_day} day legs since the start`}>{sgn(p.night_delta)}</td><td className="num r">{nm(b.sailed_nm)}</td><td className="num r">{nm(b.made_good_nm)}</td><td className="num r" title={b.restart_at ? "Not comparable after a restart: miles sailed count from the restart, miles made good from the start" : undefined}>{extraMiles(b) == null ? "—" : `${sgn(extraMiles(b)! * 100, 0)}%`}</td></tr>)}</tbody></table>
+      <div className="small" style={{ fontSize: 12 }}>Night − day: average leg speed between 2000 and 0600 local solar time minus the rest, since the start; it needs six legs of each. Extra: miles sailed along the track over miles made good toward the finish, since the start; blank for a boat that restarted, whose two figures count from different moments.</div></div>
   </Shell>;
 }
