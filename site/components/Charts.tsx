@@ -11,12 +11,12 @@ export function LineChart({ series, xs, ymin, ymax, yticks, xlab, ylab = signed,
     {series.map(s => <g key={s.name}><path d={"M" + xs.map((i, j) => `${X(i).toFixed(1)},${Y(s.vals[j]).toFixed(1)}`).join(" L")} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" /><circle cx={X(xs[xs.length - 1])} cy={Y(s.vals[s.vals.length - 1])} r={4} fill={s.color} stroke="var(--panel)" strokeWidth={2} /><text x={X(xs[xs.length - 1]) + 9} y={Y(s.vals[s.vals.length - 1]) + 4} fontFamily={MONO} fontSize={11} fill="var(--ink)">{ylab(s.vals[s.vals.length - 1])}</text></g>)}
   </svg>;
 }
-export function VBars({ vals, labels, max, width = 528, height = 150, hi, color = "var(--series-1)" }: { vals: (number | null)[]; labels: string[]; max: number; width?: number; height?: number; hi?: number; color?: string }) {
+export function VBars({ vals, labels, max, width = 528, height = 150, hi, color = "var(--series-1)" }: { vals: (number | null)[]; labels: string[]; max: number; width?: number; height?: number; hi?: Set<number>; color?: string }) {
   const L = 8, B = 22, T = 18, slot = (width - 2 * L) / vals.length, bw = Math.min(24, slot * 0.6);
   return <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
     <line x1={L} y1={height - B} x2={width - L} y2={height - B} stroke="var(--graphite)" />
     {vals.map((v, i) => { const cx = L + slot * i + slot / 2; if (v == null) return <text key={i} x={cx} y={height - B - 6} textAnchor="middle" fontFamily={MONO} fontSize={10} fill="var(--graphite)">–</text>;
-      const h = (height - B - T) * Math.min(v, max) / max; return <g key={i}><rect x={cx - bw / 2} y={height - B - h} width={bw} height={h} rx={4} fill={hi === i ? "var(--gold)" : color} /><text x={cx} y={height - B - h - 5} textAnchor="middle" fontFamily={MONO} fontSize={10} fill="var(--ink)">{Math.round(v)}</text></g>; })}
+      const h = (height - B - T) * Math.min(v, max) / max; return <g key={i}><rect x={cx - bw / 2} y={height - B - h} width={bw} height={h} rx={4} fill={hi?.has(i) ? "var(--gold)" : color} /><text x={cx} y={height - B - h - 5} textAnchor="middle" fontFamily={MONO} fontSize={10} fill="var(--ink)">{Math.round(v)}</text></g>; })}
     {labels.map((l, i) => <text key={l + i} x={L + slot * i + slot / 2} y={height - 6} textAnchor="middle" fontFamily={MONO} fontSize={10} fill="var(--graphite)">{l}</text>)}
   </svg>;
 }
