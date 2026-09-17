@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from . import config, names
 from .grid import gc_nm, resample, window, legs, slot_of, slot_time, SLOT_S
-from . import perf, duels
+from . import perf, duels, course
 
 DAY = 86400
 
@@ -89,12 +89,10 @@ def ghost_time_gap_days(ghost_fixes, boat_dtf_nm, T):
     pace_m_per_s = (old["dtf"] - last["dtf"]) / (last["at"] - old["at"])
     return ((last["dtf"] - target) / pace_m_per_s + (last["at"] - T)) / DAY
 
-def next_mark_for(fix):
-    """v0 rule, valid until Trindade: a boat north of a mark's latitude (+0.2°) is heading for it."""
-    for name, lat, lon in config.MARKS:
-        if fix["lat"] > lat + 0.2:
-            return name, lat, lon
-    return config.MARKS[-1]
+def least_dtf_nm(fixes, t0, T):
+    """The least distance to finish YB has shown for a boat up to T, counted from a restart: a mark once passed stays passed
+    (course.next_mark), whatever the boat does afterwards. Fixes without a distance (in-port tracker noise) are left out."""
+    return min((f["dtf"] for f in fixes if t0 <= f["at"] <= T + 1200 and f.get("dtf")), default=None)
 
 def unreported(snapshot):
     """True when no boat has a fix for the snapshot's report time: the report has not been captured yet. One boat without
@@ -109,6 +107,7 @@ def compute_snapshot(setup, fixes_by_team, T):
     racing_ids = [tid for tid in fixes_by_team if tid not in config.GHOSTS and tid in team_meta]
     racing = {tid: fixes_by_team[tid] for tid in racing_ids}
     rank_now, rank_then = rank_at(racing, T), rank_at(racing, T - DAY)
+    togo = course.mark_togo(setup["course"]["nodes"], config.MARKS)      # each mark's own distance to finish, on YB's scale
 
     ghosts = {}
     for gid in config.GHOSTS:
@@ -138,8 +137,10 @@ def compute_snapshot(setup, fixes_by_team, T):
         leg_rows = legs(slots, kl, 42, t0) if kl is not None else []
         old = at_or_before(fx, max(f["at"] - 7 * DAY, t0))
         vmg7 = ((old["dtf"] - f["dtf"]) / 1852.0) / ((f["at"] - old["at"]) / 3600.0) if old and f["at"] > old["at"] else 0.0
-        mark_name, mlat, mlon = next_mark_for(f)
-        dmark = gc_nm(f["lat"], f["lon"], mlat, mlon)
+        least = least_dtf_nm(fx, t0, T)
+        mark_name, mlat, mlon = course.next_mark((least if least is not None else f["dtf"]) / 1852.0, config.MARKS, togo)
+        # To a mark: the great circle from the boat. To the finish: YB's distance to finish, which goes round the land between.
+        dmark = f["dtf"] / 1852.0 if mark_name == config.MARKS[-1][0] else gc_nm(f["lat"], f["lon"], mlat, mlon)
         eta = f["at"] + dmark / vmg7 * 3600 if vmg7 > 0.2 else None
         ks = sorted(k for k in slots if k <= KT and slots[k]["at"] >= t0)
         sailed = sum(gc_nm(slots[a]["lat"], slots[a]["lon"], slots[b]["lat"], slots[b]["lon"]) for a, b in zip(ks, ks[1:]))

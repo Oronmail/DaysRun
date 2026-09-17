@@ -1,9 +1,17 @@
 # worker/ggrstats/events.py
 """Turn the difference between two snapshots into a time-ordered feed. Titles use first names only."""
 from datetime import datetime, timezone
+from . import course
 
 def _d(unix):
     return datetime.fromtimestamp(unix, timezone.utc).strftime("%Y-%m-%dT%H:%M")
+
+def _passed(mark):
+    """An island, a cape or an inshore mark is rounded; a Southern Ocean waypoint, left hundreds of miles to one side, is
+    passed; the Hobart Gate is a line to cross and wait behind (NOR C.1.5)."""
+    if mark == "Hobart Gate":
+        return "is through the Hobart Gate"
+    return f"has passed the {mark} waypoint" if mark[0].isdigit() else f"has rounded {mark}"
 
 def derive(snapshot, previous, conditions):
     T = snapshot["as_of"]
@@ -27,8 +35,11 @@ def derive(snapshot, previous, conditions):
                 f"Last fix at {datetime.fromtimestamp(b['last_fix_at'], timezone.utc).strftime('%H%M')} UTC.")
         if b["restart"] and prev and b["id"] in prev and not prev[b["id"]].get("restart_at"):
             add("restart", b["id"], f"{b['first']} restarted from Les Sables after repairs", "NOR C.1.2: race time is not reset.", key=f"restart:{b['id']}")
-        if prev.get(b["id"]) and prev[b["id"]].get("next_mark") != b["next_mark"] and prev[b["id"]].get("next_mark"):
-            add("next_mark", b["id"], f"{b['first']} has rounded {prev[b['id']]['next_mark']}", page="Course & sprints")
+        # Said only when the next mark moves forward along the course: two snapshots derived by different rules, or a
+        # course amended by the race (NOR C.1.4), must never read as a mark un-rounded or a later one rounded.
+        was_mark = prev.get(b["id"], {}).get("next_mark")
+        if was_mark and -1 < course.order(was_mark) < course.order(b["next_mark"]):
+            add("next_mark", b["id"], f"{b['first']} {_passed(was_mark)}", page="Course & sprints")
     # A place gained or lost against a boat with an older fix is not a move (audit N6): compare the order now with the
     # order 24 hours ago among the boats that have a current fix. rank_change = rank then − rank now.
     stale_ids = set((snapshot.get("fleet") or {}).get("stale_ids", []))

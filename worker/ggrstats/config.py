@@ -11,9 +11,17 @@ REVALIDATE_SECRET = os.getenv("REVALIDATE_SECRET", "")
 USER_AGENT = os.getenv("GGR_USER_AGENT", "daysrun/0.1 (unofficial fan statistics)")
 
 LES_SABLES = (46.4964, -1.7947)            # marina, for restart detection
-# Marks in course order for the ETA logic (name, lat, lon). Lanzarote from RaceSetup poi
-# "Inshore Canary mark to Starboard"; Trindade from poi "Island of Trindade left to Port".
-MARKS = [("Lanzarote", 28.85335, -13.82092), ("Trindade", -20.50345, -29.32654)]
+# The marks of the course in the order of NOR C.1.3 (name, lat, lon), positions from RaceSetup's points of interest
+# ("Inshore Canary mark to Starboard", "Island of Trindade left to Port", "45S-40E left to Starboard", …). The Hobart Gate is the
+# middle of its crossing line; the last mark is the finish. Which one is next: course.py.
+MARKS = [("Lanzarote", 28.85335, -13.82092), ("Trindade", -20.50345, -29.32654),
+         ("45°S 40°E", -45.0, 40.0), ("45°S 65°E", -45.0, 65.0), ("45°S 90°E", -45.0, 90.0), ("45°S 110°E", -45.0, 110.0),
+         ("Cape Leeuwin", -34.37516, 115.14697), ("Hobart Gate", -42.98192, 147.33503), ("50°S 168°E", -50.0, 168.0),
+         ("49°S 150°W", -49.0, -150.0), ("49°S 130°W", -49.0, -130.0), ("49°S 110°W", -49.0, -110.0), ("50°S 90°W", -50.0, -90.0),
+         ("Cape Horn", -55.98355, -67.26667), ("Les Sables-d’Olonne", 46.48158, -1.79084)]
+# YB's distance to finish as boats passed a mark, where it has been seen (nm). Lanzarote: 24,469.8 at 0.1 nm from the mark and
+# 24,468.9 at 1.2 nm, on 16 Sep 2026. Add the next ones as the leader passes them: the fix nearest the mark, its dtf.
+MARK_TOGO_OBSERVED = {"Lanzarote": 24469.5}
 # Latitude sprints (name, from_lat, to_lat): time between crossing two parallels, southbound.
 # Named by their parallels (45°N–40°N is off Galicia and Portugal, not the Bay of Biscay, which ends at Finisterre).
 SPRINTS = [("45°N–40°N", 45.0, 40.0), ("40°N–35°N", 40.0, 35.0), ("35°N–30°N", 35.0, 30.0),
