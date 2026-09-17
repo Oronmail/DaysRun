@@ -8,7 +8,7 @@ export type BoatStat = { team_id: number; as_of: string; rank: number; rank_chan
 export type FleetStat = { as_of: string; race_day: number; leader_team_id: number; spread_nm: number; best_run24_nm: number; best_run24_team_id: number; ahead_vdh: number; ahead_kirsten: number; vdh_dtf_nm: number | null; kirsten_dtf_nm: number | null; next_mark: string; racing: number; retired: number };
 export type RecordRow = { kind: string; win: string; rank: number; team_id: number; value: number; at: string; team: Team };
 export type SprintRow = { sprint_name: string; team_id: number; start_at: string; end_at: string; hours: number; team: Team };
-export type ConditionRow = { team_id: number; fix_at: string; wind_kn: number; gust_kn: number; wind_dir_deg: number; mslp_hpa: number; wave_m: number; swell_m: number; swell_period_s: number; current_kn: number; current_dir_deg: number; sst_c: number };
+export type ConditionRow = { team_id: number; fix_at: string; wind_kn: number; gust_kn: number; wind_dir_deg: number; mslp_hpa: number; wave_m: number; swell_m: number; swell_period_s: number; current_kn: number; current_dir_deg: number; sst_c: number; model_at: string };   // model_at: the report the values belong to; older than fix_at when the weather service did not answer for the latest report
 export type EventRow = { at: string; kind: string; team_id: number | null; title: string; body: string | null; page: string | null };
 export type LegRow = { end_slot: string; speed_kn: number | null; dist_nm: number | null };
 
@@ -41,9 +41,24 @@ export async function recordBoard(asOf: string): Promise<RecordRow[]> {
 export async function sprintResults(asOf: string): Promise<SprintRow[]> {
   return ok(await supabase.from("sprint_result").select("*, team!inner(*)").eq("race_key", RACE).eq("as_of", asOf).order("hours"));
 }
+// Model conditions for each boat's latest fix. Open-Meteo is a free service and a call can fail (the worker retries on its next
+// run), so a boat falls back to its most recent values from the last 12 hours rather than leaving the pages empty; model_at says
+// which report they belong to and the Conditions page marks them.
 export async function conditionsAt(stats: BoatStat[]): Promise<ConditionRow[]> {
+  if (!stats.length) return [];
+  const ms = (iso: string) => new Date(iso).getTime();
   const ats = [...new Set(stats.map(s => s.last_fix_at))];
-  return ok(await supabase.from("conditions").select("*").eq("race_key", RACE).in("fix_at", ats));
+  const since = new Date(Math.max(...ats.map(ms)) - 12 * 3600 * 1000).toISOString();
+  type Raw = Omit<ConditionRow, "model_at">;
+  const [exact, recent] = await Promise.all([
+    supabase.from("conditions").select("*").eq("race_key", RACE).in("fix_at", ats),
+    supabase.from("conditions").select("*").eq("race_key", RACE).gte("fix_at", since).order("fix_at", { ascending: false }).limit(200),
+  ]);
+  const rows: Raw[] = [...ok<Raw[]>(exact), ...ok<Raw[]>(recent)];
+  return stats.flatMap(s => {
+    const c = rows.filter(r => r.team_id === s.team_id && ms(r.fix_at) <= ms(s.last_fix_at)).sort((a, b) => ms(b.fix_at) - ms(a.fix_at))[0];
+    return c ? [{ ...c, model_at: c.fix_at, fix_at: s.last_fix_at }] : [];
+  });
 }
 export async function eventsRecent(limit = 40): Promise<EventRow[]> {
   return ok(await supabase.from("event").select("at, kind, team_id, title, body, page").eq("race_key", RACE).order("at", { ascending: false }).limit(limit));
