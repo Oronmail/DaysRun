@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+worker/.venv/
+worker/snapshots/
+**/__pycache__/
+*.pyc
+site/node_modules/
+site/.next/
+site/.vercel/
+.DS_Store

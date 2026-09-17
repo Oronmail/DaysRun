@@ -1,0 +1,19 @@
+[project]
+name = "ggrstats"
+version = "0.1.0"
+description = "Day's Run — worker for the unofficial Golden Globe Race 2026 statistics site"
+requires-python = ">=3.11"
+dependencies = ["psycopg[binary]>=3.2", "requests>=2.32"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ggrstats*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
