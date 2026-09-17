@@ -23,7 +23,7 @@ export default async function Shell({ active, dateline, title, note, sub, childr
         </div>
         {note && <div className="pencil" style={{ fontSize: 22, maxWidth: 360, textAlign: "right", lineHeight: 1.2 }}>{note}</div>}
       </div>
-      <div className="wrap"><div style={{ marginTop: 18, height: 2, background: "var(--gold)" }} /></div>
+      {/* No rule under the page head (the owner, 18 Sep 2026: too much gold on a phone); the menu's underline does the separating. */}
       <Nav items={NAV} active={active} />
       <main className="wrap" style={{ display: "flex", flexDirection: "column", gap: 40, paddingTop: 32, flex: 1 }}>{children}</main>
       <footer className="wrap" style={{ marginTop: 48, paddingBottom: 28 }}>
