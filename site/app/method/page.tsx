@@ -2,7 +2,9 @@
 import Shell from "@/components/Shell";
 import { latestFleet } from "@/lib/db";
 import { DEFINITIONS, TRACKER_URL } from "@/lib/text";
+import { pageMeta } from "@/lib/seo";
 export const revalidate = 3600;
+export const metadata = pageMeta("/method");
 export default async function Page() {
   const fleet = await latestFleet();
   const contact = process.env.CONTACT_EMAIL;                            // set where the site runs, never in this repository; none set, none shown

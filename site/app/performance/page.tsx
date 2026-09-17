@@ -6,7 +6,9 @@ import { Who } from "@/components/Who";
 import { latestFleet, boatStats, boatPerf, type BoatPerf, type BoatStat } from "@/lib/db";
 import { kn, nm, sgn } from "@/lib/format";
 import { extraMiles } from "@/lib/perf";
+import { pageMeta } from "@/lib/seo";
 export const revalidate = 900;
+export const metadata = pageMeta("/performance");
 const pct = (v: number | null | undefined) => (v == null ? "—" : `${Math.round(v * 100)}%`);
 const BANDS = ["upwind", "reaching", "running"] as const;
 export default async function Page() {

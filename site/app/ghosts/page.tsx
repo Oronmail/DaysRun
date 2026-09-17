@@ -4,7 +4,9 @@ import Dateline from "@/components/Dateline";
 import { LineChart, DotPlot, Legend } from "@/components/Charts";
 import { latestFleet, boatStats, teams, supabase, RACE } from "@/lib/db";
 import { nm, sgn } from "@/lib/format";
+import { pageMeta } from "@/lib/seo";
 export const revalidate = 900;
+export const metadata = pageMeta("/ghosts");
 export default async function Page() {
   const fleet = await latestFleet(); const [boats, all] = await Promise.all([boatStats(fleet.as_of), teams()]);
   const ghosts = all.filter(t => t.is_ghost);

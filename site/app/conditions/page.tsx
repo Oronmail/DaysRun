@@ -6,7 +6,9 @@ import { Who } from "@/components/Who";
 import { latestFleet, boatStats, conditionsAt } from "@/lib/db";
 import { beaufort } from "@/lib/text";
 import { hhmm } from "@/lib/format";
+import { pageMeta } from "@/lib/seo";
 export const revalidate = 900;
+export const metadata = pageMeta("/conditions");
 const Arrow = ({ deg }: { deg: number }) => <svg width="16" height="16" viewBox="0 0 16 16" style={{ verticalAlign: "middle" }}><g transform={`rotate(${deg % 360} 8 8)`}><path d="M8 2 L8 14 M8 14 L4.5 10 M8 14 L11.5 10" stroke="var(--ink)" strokeWidth="1.6" fill="none" strokeLinecap="round" /></g></svg>;
 const older = (b: { last_fix_at: string }, c: { model_at: string }) => new Date(c.model_at).getTime() < new Date(b.last_fix_at).getTime();
 export default async function Page() {

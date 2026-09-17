@@ -6,7 +6,9 @@ import { latestFleet, boatStats, sprintResults } from "@/lib/db";
 import { COURSE, SPRINT_ORDER } from "@/lib/text";
 import { courseEntryIsNext } from "@/lib/marks";
 import { nm, kn, dayMonTime, hoursText } from "@/lib/format";
+import { pageMeta } from "@/lib/seo";
 export const revalidate = 900;
+export const metadata = pageMeta("/course");
 export default async function Page() {
   const fleet = await latestFleet(); const [boats, sprints] = await Promise.all([boatStats(fleet.as_of), sprintResults(fleet.as_of)]);
   const lead = boats[0];

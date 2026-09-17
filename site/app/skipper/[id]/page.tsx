@@ -11,9 +11,14 @@ import SkipperRace from "@/components/SkipperRace";
 import { latestFleet, boatStats, boatPerf, duelsAt, raceSetup, trackFor, boatHistory, splitsFor, conditionsAt, teams } from "@/lib/db";
 import { fleetView } from "@/lib/geo";
 import { nm, kn, sgn, hhmm, dayMon, dayMonTime } from "@/lib/format";
+import { skipperMeta } from "@/lib/seo";
 export const revalidate = 900;
 const ord = (n: number) => `${n}${["th", "st", "nd", "rd"][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`;
 export async function generateStaticParams() { return (await teams()).filter(t => !t.is_ghost).map(t => ({ id: String(t.id) })); }
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const id = Number((await params).id), t = (await teams()).find(x => x.id === id && !x.is_ghost);
+  return t ? skipperMeta(t).meta : {};
+}
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
   const fleet = await latestFleet(); const boats = await boatStats(fleet.as_of);

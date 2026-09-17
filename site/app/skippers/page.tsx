@@ -6,7 +6,9 @@ import SpeedBars from "@/components/SpeedBars";
 import { Tri } from "@/components/Who";
 import { latestFleet, boatStats } from "@/lib/db";
 import { nm, sgn } from "@/lib/format";
+import { pageMeta } from "@/lib/seo";
 export const revalidate = 900;
+export const metadata = pageMeta("/skippers");
 export default async function Page() {
   const fleet = await latestFleet(); const boats = await boatStats(fleet.as_of);
   return <Shell active="Skippers" dateline={<Dateline asOf={fleet.as_of} raceDay={fleet.race_day} />} title="SKIPPERS" note="one page per boat: track, speed, runs, ghosts">

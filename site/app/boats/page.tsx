@@ -3,7 +3,9 @@ import Shell from "@/components/Shell";
 import Dateline from "@/components/Dateline";
 import { latestFleet, boatStats, boatPerf } from "@/lib/db";
 import { kn, nm } from "@/lib/format";
+import { pageMeta } from "@/lib/seo";
 export const revalidate = 900;
+export const metadata = pageMeta("/boats");
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2; };
 export default async function Page() {
   const fleet = await latestFleet(); const [boats, perf] = await Promise.all([boatStats(fleet.as_of), boatPerf(fleet.as_of)]);
