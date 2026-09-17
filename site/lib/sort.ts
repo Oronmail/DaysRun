@@ -18,3 +18,8 @@ export function sortBoats<T extends Row>(boats: T[], key: SortKey, dir: SortDir,
     return d !== 0 ? sign * d : a.rank - c.rank;
   });
 }
+// The phone's compact row shows fewer numbers than the table, and it only offers the orderings a reader can check against the row.
+export function phoneSortOptions(win: Win): { key: SortKey; label: string }[] {
+  return [{ key: "rank", label: "Place" }, { key: "change", label: "Places gained, 24 h" }, { key: "name", label: "Skipper" }, { key: "dtf", label: "To go" },
+    { key: "run", label: win === "4h" ? "4-hour leg speed" : win === "7d" ? "7-day run" : "24-hour run" }, { key: "gain", label: "Gained on the leader, 24 h" }, { key: "vdh", label: "Against Van Den Heede" }];
+}

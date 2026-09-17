@@ -40,7 +40,7 @@ export default async function FleetPage({ window = "24h" }: { window?: Win }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div className="rule-title"><div className="label">Ranking by distance to finish</div><div className="small only-desktop" style={{ fontStyle: "italic", marginRight: "auto", paddingLeft: 12 }}>select a skipper for the full analysis</div><div style={{ fontSize: 13 }}>{WINS.map(([w, label, href], i) => <span key={w}>{i > 0 && " · "}{w === window ? <strong>{label}</strong> : <Link href={href}>{label}</Link>}</span>)}</div></div>
         <div className="only-desktop"><RankingTable boats={boats} window={window} /></div>
-        <div className="only-phone"><div className="small" style={{ fontSize: 11, textAlign: "right", paddingBottom: 4 }}>to go nm · run · vs VDH</div><RankingList boats={boats} window={window} /></div>
+        <div className="only-phone"><RankingList boats={boats} window={window} /></div>
         <div className="small" style={{ fontSize: 12 }}>{BARS_LEGEND}{bestRun && ` · ${bestRun.team.first_name} sailed the fleet's longest run of the last 24 hours`}</div>
       </div>
       <aside style={{ display: "flex", flexDirection: "column", gap: 28 }}>

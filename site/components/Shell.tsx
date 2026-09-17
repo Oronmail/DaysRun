@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { SITE_NAME, dayMonTime } from "@/lib/format";
 import { lastSync } from "@/lib/db";
+import Nav from "@/components/Nav";
 const NAV: [string, string][] = [["Fleet", "/"], ["Skippers", "/skippers"], ["Ghost race", "/ghosts"], ["Records", "/records"], ["Course & sprints", "/course"], ["Performance", "/performance"], ["Boats", "/boats"], ["Conditions", "/conditions"], ["Method", "/method"]];
 export const NOTICE = "Not affiliated with the Golden Globe Race. Nothing on this site may be relayed to a competitor (NOR F.8.2).";
 export default async function Shell({ active, dateline, title, note, sub, children }: { active: string; dateline: React.ReactNode; title: string; note?: string; sub?: React.ReactNode; children: React.ReactNode }) {
@@ -21,9 +22,7 @@ export default async function Shell({ active, dateline, title, note, sub, childr
         {note && <div className="pencil" style={{ fontSize: 22, maxWidth: 360, textAlign: "right", lineHeight: 1.2 }}>{note}</div>}
       </div>
       <div className="wrap"><div style={{ marginTop: 18, height: 2, background: "var(--gold)" }} /></div>
-      <nav className="wrap mont" style={{ display: "flex", gap: 28, paddingTop: 14, fontSize: 13, fontWeight: 600, flexWrap: "wrap" }}>
-        {NAV.map(([n, href]) => <Link key={n} href={href} style={{ textDecoration: "none", paddingBottom: 4, color: n === active ? "var(--ink)" : "var(--graphite)", borderBottom: n === active ? "2px solid var(--gold)" : "none" }}>{n}</Link>)}
-      </nav>
+      <Nav items={NAV} active={active} />
       <main className="wrap" style={{ display: "flex", flexDirection: "column", gap: 40, paddingTop: 32, flex: 1 }}>{children}</main>
       <footer className="wrap" style={{ marginTop: 48, paddingBottom: 28 }}>
         <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 16, display: "flex", justifyContent: "space-between", gap: 32, fontSize: 12, color: "var(--graphite)", flexWrap: "wrap" }}>

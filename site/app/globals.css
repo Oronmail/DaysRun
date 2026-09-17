@@ -26,6 +26,13 @@ table.data tbody tr:nth-child(odd) { background: var(--panel); }
 .page-title { font-size: 52px; letter-spacing: 6px; }
 .tiles { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 16px; }
 .only-phone { display: none; }
+.site-nav { display: flex; flex-wrap: wrap; gap: 28px; padding-top: 14px; font-size: 13px; font-weight: 600; }
+.site-nav a { text-decoration: none; padding-bottom: 4px; color: var(--graphite); border-bottom: 2px solid transparent; white-space: nowrap; }
+.site-nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--gold); }
+.list-sort { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--graphite); }
+.list-sort label { white-space: nowrap; } .list-sort select { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 0; padding: 7px 8px; }
+.list-sort button { font: inherit; font-size: 10px; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); padding: 7px 9px; cursor: pointer; }
+.list-sort select:focus-visible, .list-sort button:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 .who-link { color: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }   /* a skipper's name opens that skipper's page: it has to look like a link */
 .who-link:hover { text-decoration-color: var(--ink); }
 button.th-sort { all: unset; cursor: pointer; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; white-space: nowrap; }   /* a column title re-orders the table */
@@ -63,4 +70,9 @@ main svg[viewBox] { max-width: 100%; height: auto; }                /* charts sc
   .cards { grid-template-columns: minmax(0, 1fr); }
   .grid2 > aside { display: contents !important; } .grid2 .ord-first { order: -1; }   /* !important: the aside's flex is inline */
   .rule-title { flex-wrap: wrap; gap: 4px 16px; }
+  /* The menu: one row, swiped sideways, instead of three wrapped rows. The fade at the right says there is more. */
+  .site-nav { flex-wrap: nowrap; overflow-x: auto; gap: 22px; padding: 12px 40px 2px 16px; font-size: 14px; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent); }
+  .site-nav::-webkit-scrollbar { display: none; }
+  .site-nav a { padding: 6px 0 6px; }
 }

@@ -1,6 +1,6 @@
 // site/__tests__/sort.test.ts
 import { describe, it, expect } from "vitest";
-import { sortBoats, defaultDir } from "../lib/sort";
+import { sortBoats, defaultDir, phoneSortOptions } from "../lib/sort";
 const b = (team_id: number, rank: number, o: Record<string, unknown> = {}) => ({ team_id, rank, rank_change: 0, dtf_nm: 24000 + rank, gap_nm: rank, gain24_nm: 0, vs_near_nm: 0, run24_nm: 100, run7_nm: 700, spd4: 5, spd7: 5, vs_vdh_days: 0, team: { name: "X" + rank }, ...o });
 describe("sortBoats", () => {
   const boats = [b(6, 1, { run24_nm: 154, team: { name: "Damien Guillou" } }), b(10, 2, { run24_nm: 143, team: { name: "Pat Lawless" } }), b(12, 3, { run24_nm: 174, team: { name: "Henry Wootton" } }), b(16, 4, { run24_nm: null, team: { name: "Andrea Lodolo" } })];
@@ -18,4 +18,14 @@ describe("sortBoats", () => {
     expect(sortBoats(g, "gain", defaultDir("gain"), "24h").map(x => x.team_id)).toEqual([3, 2, 1]);
   });
   it("opens each column in its natural direction", () => { expect(defaultDir("rank")).toBe("asc"); expect(defaultDir("run")).toBe("desc"); expect(defaultDir("vdh")).toBe("desc"); expect(defaultDir("name")).toBe("asc"); });
+});
+
+describe("the phone list's orderings", () => {
+  it("offers only what a phone row shows, so that an order is never a mystery", () => {
+    expect(phoneSortOptions("24h").map(o => o.key)).toEqual(["rank", "change", "name", "dtf", "run", "gain", "vdh"]);   // no gap, vs nearby or 7-day speed: not on the row
+  });
+  it("names the run after the window the page is on", () => {
+    const label = (w: "4h" | "24h" | "7d") => phoneSortOptions(w).find(o => o.key === "run")!.label;
+    expect(label("24h")).toBe("24-hour run"); expect(label("4h")).toBe("4-hour leg speed"); expect(label("7d")).toBe("7-day run");
+  });
 });
