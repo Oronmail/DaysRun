@@ -91,7 +91,7 @@ def replace_snapshot(conn, key, as_of, snap):
     # One pipeline: about 50 statements per snapshot travel in a single round trip instead of 50 (each costs 80-150 ms
     # between a GitHub runner or a laptop and the database; re-deriving a whole race would otherwise take hours).
     with conn.pipeline(), conn.cursor() as cur:
-        for t in ("restart", "boat_stat", "boat_perf", "fleet_stat", "record_board", "sprint_result"):   # leg rows are upserted, not replaced
+        for t in ("restart", "boat_stat", "boat_perf", "duel", "fleet_stat", "record_board", "sprint_result"):   # leg rows are upserted, not replaced
             cur.execute(f"delete from {t} where race_key=%s and as_of=%s", (key, a))
         for b in snap["boats"]:
             if b.get("restart"):
@@ -128,6 +128,9 @@ def replace_snapshot(conn, key, as_of, snap):
                      f["ahead_vdh"], f["ahead_kirsten"], f["vdh_dtf_nm"], f["kirsten_dtf_nm"], f["next_mark"], f["racing"], f["retired"]))
         cur.executemany("insert into record_board values (%s,%s,%s,%s,%s,%s,%s,%s)",
                         [(key, a, r["kind"], r["win"], r["rank"], r["team_id"], r["value"], ts(r["at"])) for r in snap["records"]])
+        cur.executemany("insert into duel values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                        [(key, a, d["ahead_id"], d["behind_id"], d["gap_nm"], d["gap24_nm"], d["gap72_nm"], d["lead_changes"], ts(d["passed_at"]),
+                          d["water_nm"], d["side"], Jsonb(d["series"])) for d in snap.get("duels", [])])
         cur.executemany("insert into sprint_result values (%s,%s,%s,%s,%s,%s,%s)",
                         [(key, a, s["sprint"], s["team_id"], ts(s["start_at"]), ts(s["end_at"]), s["hours"]) for s in snap["sprints"]])
 

@@ -14,7 +14,7 @@ def conn():
     c = db.connect(URL)
     for m in sorted((pathlib.Path(__file__).parents[2] / "db/migrations").glob("*.sql")):     # every migration, in order
         c.execute(m.read_text())
-    c.execute("truncate boat_perf, race, team, fix, leaderboard_snap, split, restart, leg, boat_stat, fleet_stat, record_board, sprint_result, conditions, event cascade")
+    c.execute("truncate duel, boat_perf, race, team, fix, leaderboard_snap, split, restart, leg, boat_stat, fleet_stat, record_board, sprint_result, conditions, event cascade")
     c.commit()
     yield c
     c.close()
@@ -60,6 +60,8 @@ def test_snapshot_write_roundtrip_is_idempotent(conn):
     assert one("select count(*) from boat_stat where as_of=%s") == 16
     assert one("select count(*) from fleet_stat where as_of=%s") == 1
     assert one("select count(*) from boat_perf where as_of=%s") == 16
+    assert one("select count(*) from duel where as_of=%s") == len(snap["duels"]) == 6
+    assert conn.execute("select jsonb_array_length(series_json) > 10 from duel where ahead_id=13 and behind_id=4 and as_of=%s", (db.ts(T),)).fetchone()[0] is True
     assert conn.execute("select gain24_nm is null, lever_dir from boat_stat where team_id=6 and as_of=%s", (db.ts(T),)).fetchone() == (True, None)   # the leader
     assert conn.execute("select gain24_nm is not null and lever_nm > 0 from boat_stat where team_id=10 and as_of=%s", (db.ts(T),)).fetchone()[0] is True
     assert conn.execute("select count(*) from daily_place where as_of=%s", (db.ts(T),)).fetchone()[0] == 16                                 # T is a 0000 UTC snapshot

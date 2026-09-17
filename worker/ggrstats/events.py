@@ -45,6 +45,22 @@ def derive(snapshot, previous, conditions):
                 groups.setdefault(gained[b["id"]], []).append(b["first"])
         text = " · ".join(f"{'▲' if n > 0 else '▼'}{abs(n)} {', '.join(who)}" for n, who in sorted(groups.items(), key=lambda kv: -kv[0]))
         add("moves", None, f"Places, last 24 hours: {text}", "A place gained against a boat that missed the report is not counted.", key=f"moves:{_d(T)[:10]}:{text}")
+    # Duels (duels.py): a pass inside a duel, said once — the key is the moment of the pass, not the report that saw it; and a
+    # chase that has closed to within 5 nm, said once a day per pair.
+    who = {b["id"]: b["first"] for b in boats}
+    # In the first three days the whole fleet is within a few miles and places swap at every report: nothing to say yet.
+    for d in (snapshot.get("duels", []) if snapshot.get("race_day", 99) >= 3 else []):
+        a, c = who.get(d["ahead_id"]), who.get(d["behind_id"])
+        if not a or not c:
+            continue
+        was = d.get("gap72_nm")
+        if d.get("passed_at") and d["passed_at"] >= T - 12 * 3600:
+            if d["gap_nm"] < 2:                      # level, inside the noise of two fixes: said when she is two miles clear
+                continue
+            tail = f", after trailing by {round(-was)} nm three days ago" if was is not None and was <= -5 else ""
+            add("pass", d["ahead_id"], f"{a} passes {c} and leads by {round(d['gap_nm'])} nm{tail}", page="Fleet", key=f"pass:{d['ahead_id']}:{d['behind_id']}:{d['passed_at']}")
+        elif d["gap_nm"] <= 5 and was is not None and was - d["gap_nm"] >= 10:
+            add("duel", d["behind_id"], f"{c} has closed to {max(1, round(d['gap_nm']))} nm behind {a}, from {round(was)} nm three days ago", page="Fleet", key=f"duel:{d['ahead_id']}:{d['behind_id']}:{_d(T)[:10]}")
     lead = boats[0]
     if lead["next_mark_nm"] is not None and lead["next_mark_nm"] < 100 and lead["next_mark_eta"]:
         add("next_mark", lead["id"], f"{lead['first']} is {round(lead['next_mark_nm'])} nm from {lead['next_mark']}, due about {datetime.fromtimestamp(lead['next_mark_eta'], timezone.utc).strftime('%H%M')} UTC", page="Course & sprints", key=f"next_mark:{lead['id']}:{_d(T)}")

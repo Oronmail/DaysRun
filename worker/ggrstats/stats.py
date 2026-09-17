@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from . import config, names
 from .grid import gc_nm, resample, window, legs, slot_of, slot_time, SLOT_S
-from . import perf
+from . import perf, duels
 
 DAY = 86400
 
@@ -156,7 +156,7 @@ def compute_snapshot(setup, fixes_by_team, T):
         })
     boats.sort(key=lambda b: b["dtf_nm"])
     if not boats:                                                # asked for a time before the first fix
-        return {"as_of": T, "race_day": 0, "boats": [], "ghosts": ghosts, "fleet": None, "records": [], "sprints": []}
+        return {"as_of": T, "race_day": 0, "boats": [], "ghosts": ghosts, "fleet": None, "records": [], "sprints": [], "duels": []}
     lead, prev = boats[0]["dtf_nm"], None
     for b in boats:
         b["gap_nm"] = round(b["dtf_nm"] - lead)
@@ -218,4 +218,5 @@ def compute_snapshot(setup, fixes_by_team, T):
              "vdh_dtf_nm": ghosts.get(978, {}).get("dtf_nm"), "kirsten_dtf_nm": ghosts.get(940, {}).get("dtf_nm"),
              "stale_ids": [b["id"] for b in boats if b["stale"]],
              "next_mark": boats[0]["next_mark"], "racing": len(boats), "retired": 0}
-    return {"as_of": T, "race_day": fleet["race_day"], "boats": boats, "ghosts": ghosts, "fleet": fleet, "records": records, "sprints": sprints}
+    return {"as_of": T, "race_day": fleet["race_day"], "boats": boats, "ghosts": ghosts, "fleet": fleet, "records": records, "sprints": sprints,
+            "duels": duels.find(boats, racing, T)}
