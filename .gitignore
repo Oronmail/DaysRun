@@ -12,5 +12,6 @@ site/.vercel/
 *.egg-info/
 .pytest_cache/
 
-# private working notes for coding assistants; never published
-CLAUDE.local.md
+# local working notes and tools; never published
+project/
+*.local.md
