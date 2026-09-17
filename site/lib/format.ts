@@ -1,5 +1,6 @@
 // site/lib/format.ts
 export const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "Day's Run";
+export const SITE_HOST = process.env.NEXT_PUBLIC_SITE_HOST ?? "daysrun.vercel.app";     // printed on the daily slide: the one place viewers see the address
 export const STRAPLINE = "unofficial statistics for the Golden Globe Race 2026";
 export const nm = (n: number | null | undefined) => n == null ? "—" : Math.round(n).toLocaleString("en-US");
 export const kn = (n: number | null | undefined, d = 1) => n == null ? "—" : n.toFixed(d);

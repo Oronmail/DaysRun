@@ -103,3 +103,13 @@ export async function boatHistory(teamId: number): Promise<{ as_of: string; rank
 export async function raceSetup(): Promise<{ start_at: string; course_km: number; raw_setup: { course: { nodes: { lat: number; lon: number }[] }; poi: { lines: { name: string; nodes: string }[] } } }> {
   return ok(await supabase.from("race").select("start_at, course_km, raw_setup").eq("key", RACE).single());
 }
+// The daily slide (/dons-slide): every boat's 4-hour legs, model winds and the passes of a span of time. Small reads: 16 boats, 6 reports a day.
+export async function legsBetween(fromIso: string, toIso: string): Promise<{ team_id: number; end_slot: string; dist_nm: number | null; speed_kn: number | null }[]> {
+  return ok(await supabase.from("leg").select("team_id, end_slot, dist_nm, speed_kn").eq("race_key", RACE).gt("end_slot", fromIso).lte("end_slot", toIso).limit(1000));
+}
+export async function windsBetween(fromIso: string, toIso: string): Promise<{ team_id: number; fix_at: string; wind_kn: number | null }[]> {
+  return ok(await supabase.from("conditions").select("team_id, fix_at, wind_kn").eq("race_key", RACE).gt("fix_at", fromIso).lte("fix_at", toIso).limit(1000));
+}
+export async function passesBetween(fromIso: string, toIso: string): Promise<{ at: string; title: string }[]> {
+  return ok(await supabase.from("event").select("at, title").eq("race_key", RACE).eq("kind", "pass").gt("at", fromIso).lte("at", toIso).order("at", { ascending: false }).limit(10));
+}
