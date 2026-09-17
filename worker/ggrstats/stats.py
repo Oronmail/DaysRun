@@ -106,6 +106,38 @@ def ready_to_publish(snapshot, previously_fresh, age_s, patience_s=12 * 60):
     fresh = {b["id"] for b in snapshot["boats"] if not b["stale"]}
     return age_s >= patience_s or set(previously_fresh) <= fresh
 
+RUN24_LIMIT_NM, LEG_LIMIT_KN, DTF_RISE_LIMIT_NM_PER_4H = 260.0, 12.0, 60.0          # no boat of this fleet can do any of them
+
+def sanity_problems(snapshot, previous, course_nm):
+    """Reasons not to publish a snapshot; [] when it is sane. A tracker glitch, a feed that changed shape or a bug must never put
+    an impossible number on the site (or on a slide read out on air): the run fails loudly instead, the last good snapshot stays,
+    and the alarm tells the owner. previous: [{team_id, dtf_nm, as_of_s, stale}] of the report before (db.previous_boat_stats)."""
+    out, boats = [], snapshot["boats"]
+    if snapshot["as_of"] % SLOT_S:
+        out.append("the snapshot's time is not a 4-hourly report time")
+    here = {b["id"] for b in boats}
+    gone = [p["team_id"] for p in previous if p["team_id"] not in here]
+    if gone:
+        out.append(f"{len(gone)} boat{'s' if len(gone) > 1 else ''} of the previous report {'are' if len(gone) > 1 else 'is'} missing: "
+                   + ", ".join(names.FIRST.get(t, str(t)) for t in gone))
+    if sorted(b["rank"] for b in boats) != list(range(1, len(boats) + 1)):
+        out.append(f"places are not 1 to {len(boats)}: {sorted(b['rank'] for b in boats)}")
+    was = {p["team_id"]: p for p in previous}
+    for b in boats:
+        if b["w24"] and b["w24"]["dist_nm"] > RUN24_LIMIT_NM:
+            out.append(f"{b['first']}: a 24-hour run of {round(b['w24']['dist_nm'])} nm (limit {round(RUN24_LIMIT_NM)})")
+        if b["w4"] and b["w4"]["speed_kn"] > LEG_LIMIT_KN:
+            out.append(f"{b['first']}: a 4-hour leg at {b['w4']['speed_kn']:.1f} kt (limit {round(LEG_LIMIT_KN)})")
+        if not 0 < b["dtf_nm"] <= course_nm + 50:
+            out.append(f"{b['first']}: {round(b['dtf_nm'])} nm to go, more than the course ({round(course_nm)}) or not above nought")
+        p = was.get(b["id"])
+        if p and p.get("dtf_nm") is not None and p.get("as_of_s"):
+            hours = max(4.0, (snapshot["as_of"] - p["as_of_s"]) / 3600.0)
+            rise = b["dtf_nm"] - p["dtf_nm"]
+            if rise > DTF_RISE_LIMIT_NM_PER_4H * hours / 4.0:
+                out.append(f"{b['first']}: distance to finish rose by {round(rise)} nm in {round(hours)} hours (limit {round(DTF_RISE_LIMIT_NM_PER_4H * hours / 4.0)})")
+    return out
+
 def compute_snapshot(setup, fixes_by_team, T):
     start_at = min(t["start"] for t in setup["tags"])
     course_nm = setup["course"]["distance"] / 1.852

@@ -3,7 +3,7 @@ name = "ggrstats"
 version = "0.1.0"
 description = "Day's Run — worker for the unofficial Golden Globe Race 2026 statistics site"
 requires-python = ">=3.11"
-dependencies = ["psycopg[binary]>=3.2", "requests>=2.32"]
+dependencies = ["psycopg[binary]>=3.2", "requests>=2.32", "sentry-sdk>=2.19"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

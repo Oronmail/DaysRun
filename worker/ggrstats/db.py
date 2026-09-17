@@ -159,5 +159,5 @@ def insert_events(conn, key, events):
 def previous_boat_stats(conn, key, before_as_of):
     prev = conn.execute("select max(as_of) from boat_stat where race_key=%s and as_of < %s", (key, ts(before_as_of))).fetchone()[0]
     if not prev: return []
-    cols = ["team_id", "rank", "run24_nm", "best24_nm", "best4_kn", "best7_nm", "stale", "next_mark", "fleet_best24", "pb24", "restart_at"]
-    return [dict(zip(cols, r)) for r in conn.execute(f"select {', '.join(cols)} from boat_stat where race_key=%s and as_of=%s", (key, prev))]
+    cols = ["team_id", "rank", "run24_nm", "best24_nm", "best4_kn", "best7_nm", "stale", "next_mark", "fleet_best24", "pb24", "restart_at", "dtf_nm"]
+    return [dict(zip(cols, r), as_of_s=int(prev.timestamp())) for r in conn.execute(f"select {', '.join(cols)} from boat_stat where race_key=%s and as_of=%s", (key, prev))]

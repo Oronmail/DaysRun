@@ -3,7 +3,7 @@
 import argparse, gzip, json, logging, sys, time
 from datetime import datetime, timezone
 import requests
-from . import backfill, backup, config, db, decode, events, perf, stats, weather, yb
+from . import backfill, backup, config, db, decode, events, monitoring, perf, stats, weather, yb
 from .grid import SLOT_S
 
 log = logging.getLogger("ggrstats")
@@ -32,7 +32,11 @@ def cmd_capture(conn, race):
         log.info("backup: %d snapshot files uploaded", backup.upload_files(paths))
     except Exception as e:                       # a backup failure must not stop the derive
         log.warning("backup failed: %s", e)
+        monitoring.warn("the raw-snapshot backup failed", reason=type(e).__name__)
     return new
+
+class SanityError(RuntimeError):
+    """A snapshot that broke an invariant (stats.sanity_problems). Nothing was written."""
 
 def cmd_derive(conn, race, as_of, fixes=None):
     """fixes: pass the result of db.load_fixes when deriving many slots in one run, so the track is read once, not per slot."""
@@ -46,6 +50,9 @@ def cmd_derive(conn, race, as_of, fixes=None):
     if not stats.ready_to_publish(snapshot, {p["team_id"] for p in previous if not p["stale"]}, time.time() - as_of):
         log.info("derive %s: part of the fleet has not reported yet, waiting for the next run (12 minutes at most)", datetime.fromtimestamp(as_of, timezone.utc))
         return snapshot
+    problems = stats.sanity_problems(snapshot, previous, setup["course"]["distance"] / 1.852)
+    if problems:                                      # never published over the last good snapshot; the failed run is what raises the alarm
+        raise SanityError(f"snapshot {datetime.fromtimestamp(as_of, timezone.utc):%Y-%m-%d %H:%M} refused: " + "; ".join(problems))
     winds = db.load_winds(conn, race)                 # small; read each time so the pass after the weather call sees it
     start_at = min(t["start"] for t in setup["tags"])
     for b in snapshot["boats"]:
@@ -78,6 +85,7 @@ def safe_weather(conn, race, as_of):
     except Exception as e:
         conn.rollback()
         log.warning("weather failed for %s: %s", datetime.fromtimestamp(as_of, timezone.utc), e)
+        monitoring.warn("the weather call failed", reason=type(e).__name__)
         return False
 
 def cmd_revalidate():
@@ -124,7 +132,7 @@ def cmd_verify(conn, race, as_of, golden_path):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ggrstats")
-    ap.add_argument("command", choices=["capture", "derive", "weather", "revalidate", "all", "backfill", "verify"])
+    ap.add_argument("command", choices=["capture", "derive", "weather", "revalidate", "all", "backfill", "verify", "alarm-test"])
     ap.add_argument("--as-of", help="ISO UTC time; default = the latest 4-hour slot")
     ap.add_argument("--race", default=config.RACE_KEY)
     ap.add_argument("--master", help="backfill: path to AllPositions3.master.json.gz")
@@ -134,6 +142,9 @@ def main(argv=None):
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     as_of = parse_iso(a.as_of) if a.as_of else latest_slot()
+    monitoring.init()
+    if a.command == "alarm-test":                    # proves the alarm end to end: this must arrive as an e-mail
+        raise RuntimeError("Day's Run alarm test: this error was raised on purpose. Nothing is wrong.")
     if a.command == "revalidate":
         return cmd_revalidate()
     conn = db.connect()
@@ -148,17 +159,18 @@ def main(argv=None):
         elif a.command == "weather":
             cmd_weather(conn, a.race, as_of)
         elif a.command == "all":
-            cmd_capture(conn, a.race)
-            last = conn.execute("select extract(epoch from max(as_of))::bigint from fleet_stat where race_key=%s", (a.race,)).fetchone()[0]
-            slots = backfill.slots_between(last, as_of) if last and last < as_of else [as_of]   # catch up any slot a delayed run skipped
-            if last:
-                safe_weather(conn, a.race, last)     # retry a weather call that failed last run; makes no request when nothing is missing
-            fixes = db.load_fixes(conn, a.race)
-            for t in slots:
-                cmd_derive(conn, a.race, t, fixes)
-                if safe_weather(conn, a.race, t):
-                    cmd_derive(conn, a.race, t, fixes)   # second pass so gale events see the weather
-            cmd_revalidate()
+            with monitoring.checkin("worker-all"):       # a run that never starts, or fails twice running, is noticed
+                cmd_capture(conn, a.race)
+                last = conn.execute("select extract(epoch from max(as_of))::bigint from fleet_stat where race_key=%s", (a.race,)).fetchone()[0]
+                slots = backfill.slots_between(last, as_of) if last and last < as_of else [as_of]   # catch up any slot a delayed run skipped
+                if last:
+                    safe_weather(conn, a.race, last)     # retry a weather call that failed last run; makes no request when nothing is missing
+                fixes = db.load_fixes(conn, a.race)
+                for t in slots:
+                    cmd_derive(conn, a.race, t, fixes)
+                    if safe_weather(conn, a.race, t):
+                        cmd_derive(conn, a.race, t, fixes)   # second pass so gale events see the weather
+                cmd_revalidate()
         elif a.command == "backfill":
             setup_path = sorted(__import__("pathlib").Path(a.snapshots).glob("RaceSetup.*.gz"))[-1]
             setup = json.load(gzip.open(setup_path))
