@@ -1,6 +1,7 @@
 // site/components/RecordsPage.tsx — the Records page body, shared by /records (whole race), /records/7d and /records/30d so that
 // all three stay statically rendered; reading ?w= from searchParams would make the page render on every request.
 import Shell from "@/components/Shell";
+import Dateline from "@/components/Dateline";
 import { latestFleet, boatStats, recordBoard } from "@/lib/db";
 import { dateline, nm, kn, dayMon, dayMonTime } from "@/lib/format";
 export type RecWin = "7d" | "30d" | "race";
@@ -15,7 +16,7 @@ export default async function RecordsPage({ win = "race" }: { win?: RecWin }) {
   };
   const pbs = boats.filter(b => b.pb24 || b.fleet_best24).sort((a, b) => (b.run24_nm ?? 0) - (a.run24_nm ?? 0));
   const best = boats.reduce((a, b) => (b.best24_nm > a.best24_nm ? b : a), boats[0]);
-  return <Shell active="Records" dateline={dateline(fleet.as_of, fleet.race_day)} title="RECORDS" note={`${best.team.first_name}’s ${nm(best.best24_nm)} nm still leads`}>
+  return <Shell active="Records" dateline={<Dateline asOf={fleet.as_of} raceDay={fleet.race_day} />} title="RECORDS" note={`${best.team.first_name}’s ${nm(best.best24_nm)} nm still leads`}>
     <div className="stack" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 32 }}>
       {board("best4", "Best 4-hour leg", "kt", v => kn(v), "Average speed on one 4-hour leg between two consecutive reports. Start day excluded; a leg spanning a missed report never counts.")}
       {board("best24", "Best 24-hour run", "nm", v => nm(v), "Six consecutive 4-hour legs, summed; none may be missing.")}

@@ -1,8 +1,9 @@
 // site/app/ghosts/page.tsx
 import Shell from "@/components/Shell";
+import Dateline from "@/components/Dateline";
 import { LineChart, DotPlot, Legend } from "@/components/Charts";
 import { latestFleet, boatStats, teams, supabase, RACE } from "@/lib/db";
-import { dateline, nm, sgn } from "@/lib/format";
+import { nm, sgn } from "@/lib/format";
 export const revalidate = 900;
 export default async function Page() {
   const fleet = await latestFleet(); const [boats, all] = await Promise.all([boatStats(fleet.as_of), teams()]);
@@ -14,7 +15,7 @@ export default async function Page() {
   const vs = (g: "vdh_dtf_nm" | "kirsten_dtf_nm") => ({ lead: daily.map(d => (d[g] ?? 0) - pick(d.as_of, 1)), med: daily.map(d => (d[g] ?? 0) - (pick(d.as_of, 8) + pick(d.as_of, 9)) / 2) });
   const v1 = vs("vdh_dtf_nm"), v2 = vs("kirsten_dtf_nm"); const xs = daily.map((_, i) => i);
   const lead = boats[0];
-  return <Shell active="Ghost race" dateline={dateline(fleet.as_of, fleet.race_day)} title="GHOST RACE" note={`${lead.team.first_name} is ${sgn(lead.vs_vdh_days)} days on Van Den Heede`}>
+  return <Shell active="Ghost race" dateline={<Dateline asOf={fleet.as_of} raceDay={fleet.race_day} />} title="GHOST RACE" note={`${lead.team.first_name} is ${sgn(lead.vs_vdh_days)} days on Van Den Heede`}>
     <div style={{ maxWidth: 820, fontSize: 19, lineHeight: 1.5 }}>YB replays four historic voyages beside the 2026 fleet, day for day. Two of them — Van Den Heede’s 2018 win and Neuschäfer’s 2022 win — are complete enough to race against.</div>
     <div className="stack2" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 16 }}>{ghosts.map(g => <div className="tile" key={g.id}><div className="k">{g.ghost_label}</div><div className="v" style={{ fontSize: 20 }}>{g.name.replace(/ \d{4}.*$/, "")}</div><div className="s"><i>{g.yacht}</i> · {g.model}</div><div className="num" style={{ fontSize: 22, paddingTop: 6 }}>{g.id === 978 ? nm(fleet.vdh_dtf_nm) : g.id === 940 ? nm(fleet.kirsten_dtf_nm) : "—"}{g.id === 978 || g.id === 940 ? " nm" : ""}</div><div className="s" style={{ fontSize: 12 }}>{g.id === 978 || g.id === 940 ? `to go on race day ${fleet.race_day}` : "sparse replay"}</div></div>)}</div>
     <div className="stack" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40 }}>

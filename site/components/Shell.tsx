@@ -4,7 +4,7 @@ import { SITE_NAME, dayMonTime } from "@/lib/format";
 import { lastSync } from "@/lib/db";
 const NAV: [string, string][] = [["Fleet", "/"], ["Skippers", "/skippers"], ["Ghost race", "/ghosts"], ["Records", "/records"], ["Course & sprints", "/course"], ["Performance", "/performance"], ["Boats", "/boats"], ["Conditions", "/conditions"], ["Method", "/method"]];
 export const NOTICE = "Not affiliated with the Golden Globe Race. Nothing on this site may be relayed to a competitor (NOR F.8.2).";
-export default async function Shell({ active, dateline, title, note, sub, children }: { active: string; dateline: string; title: string; note?: string; sub?: React.ReactNode; children: React.ReactNode }) {
+export default async function Shell({ active, dateline, title, note, sub, children }: { active: string; dateline: React.ReactNode; title: string; note?: string; sub?: React.ReactNode; children: React.ReactNode }) {
   const sync = await lastSync();
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>

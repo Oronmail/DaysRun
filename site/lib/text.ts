@@ -9,7 +9,7 @@ export const DEFINITIONS: [string, string][] = [
   ["4-hour leg", "The straight line between two consecutive fixes of one boat. Its great-circle distance divided by the time between the fixes is the leg’s average speed over the ground — a lower bound on true speed over ground (SOG), never boat speed through the water. A leg is never stretched across a missed report."],
   ["24-hour run", "Distance sailed along the track over the six 4-hour legs ending at the report time. 7-day run: the same over 42 legs. A boat that restarted shows “since restart” until it has seven days at sea."],
   ["Best 4-hour leg, best 24-hour run, best 7-day run", "A boat’s fastest single leg and longest runs so far this race, start day excluded, with no missed report inside the window. Personal best (PB) is the boat’s own; fleet best the whole fleet’s."],
-  ["On the leader, 24 h", "Nautical miles gained (+) or lost (−) on today’s leader over the last 24 hours, measured fix to fix on YB’s distance to finish. Blank for a boat without a current fix: a missed report is not a hundred miles lost."],
+  ["On the leader, 24 h", "Nautical miles gained (+) or lost (−) on today’s leader over the last 24 hours, measured fix to fix on YB’s distance to finish. Blank for a boat without a current fix: a missed report is not a hundred miles lost. A skipper’s page gives the same figure against the boat one place ahead and the boat one place behind."],
   ["Against the boats nearby", "A boat’s 24-hour run minus the median run of the boats within 150 nm of her, which sail much the same weather. It takes the weather out of the comparison, near enough. Blank with fewer than two such boats."],
   ["Off the leader’s track", "The distance from a boat to the nearest point of the track the leader sailed, and the compass side she lies on: the tactical bet, in one number."],
   ["Duel", "Two boats next to each other in the ranking, both with a current fix, within 15 nm of each other in distance to finish. The line on a duel’s card is that gap at every 4-hour report of the last three days, fix to fix; it sits above “level” while today’s leader of the pair was ahead. A pass is reported once, when the new leader is two miles clear; nothing is reported in the first three days of the race, when the whole fleet is within a few miles. Two boats can be level to the finish and far apart on the water: that is a split, not a match race."],
@@ -18,9 +18,10 @@ export const DEFINITIONS: [string, string][] = [
   ["Steadiness and hours parked", "Over the last 7 days: the spread (standard deviation) of 4-hour leg speeds, the share of legs at 5 kt or more, and the hours on legs under 2 kt."],
   ["Night against day", "Average leg speed between 2000 and 0600 local solar time, from the boat’s longitude, minus the average of the other legs, since the start. It needs six legs of each."],
   ["Made good", "The fall in YB’s distance to finish over a window divided by hours; the 7-day value drives ETAs. YB’s leaderboard calls the same idea VMG (recent = the last five fixes, or since the start) and publishes it in km/h, which we convert to knots. Distance made good is the reduction since the start; distance sailed is the sum of 4-hour legs."],
+  ["Next mark", "The first mark of the course, in the order of NOR C.1.3, that a boat has not yet passed. Every mark has a distance to finish of its own, the point of YB’s course line nearest to it; a boat has passed the mark once YB has shown it less distance to finish than that. So an island left to port, a Southern Ocean waypoint left hundreds of miles to starboard and a cape are all judged alike, abeam. A mark once passed stays passed. The distance shown is the great circle from the boat to the mark; to the finish it is YB’s distance to finish."],
   ["ETA", "Estimated time of arrival at the next mark, UTC: distance to the mark divided by made-good speed over the last 7 days (from the restart for a restarted boat). It doesn’t know the Southern Ocean is faster."],
   ["Mark, gate, checkpoint, sprint", "A mark is anything the fleet must pass (the NOR’s waypoints): the Lanzarote inshore rounding mark, the Island of Trindade, the no-go zone corners, Cape Leeuwin, the Hobart Gate, Cape Horn, the finish line. Gates are Lanzarote and Hobart only — the inshore marks and crossing lines where film is dropped (NOR A.1.6). Checkpoints are YB’s own timing lines (eleven; their positions are not published) and a split is the elapsed time to one. Sprints are this site’s unofficial elapsed times between two parallels, interpolated between fixes."],
-  ["No-go zones (ice limits)", "The 45°S, 49°S and 50°S waypoints the fleet must leave to starboard (NOR C.1.3), labelled NO GO ZONE on the tracker."],
+  ["No-go zones (ice limits)", "The 45°S, 49°S and 50°S waypoints of NOR C.1.3, labelled NO GO ZONE on the tracker: the fleet stays north of them, leaving each to starboard, except the last before Cape Horn, 50°S 90°W, which is left to port."],
   ["Restart", "A return to Les Sables-d’Olonne and a new departure within 7 days of the start, with the Race Director’s prior authorisation (NOR C.1.2 “Re-Start”). Race time is not reset, so places are unchanged; speed, runs and ETAs for that boat count only from the restart."],
   ["Race day", "GGR’s numbering: the UTC calendar date minus the start date (6 September = day 0, 7 September = Day 1), matching the daily video and written report."],
   ["Ghost", "A past voyage replayed by YB on this year’s calendar (its tag is “Previous Competitors”): Jean-Luc Van Den Heede 2018 (VDH), Kirsten Neuschäfer 2022, Sir Robin Knox-Johnston and Bernard Moitessier 1968–69. Ghost gap, in days: behind a ghost, how long ago its replay passed this boat’s distance to finish; ahead, how long until it will, at its pace over the last seven replay days."],
@@ -32,9 +33,17 @@ export const DEFINITIONS: [string, string][] = [
 export const TRACKER_URL = "https://goldengloberace.com/live-tracker/";
 // Sprints in course order (the worker's config.SPRINTS). Pages show the most advanced sprint first.
 export const SPRINT_ORDER = ["45°N–40°N", "40°N–35°N", "35°N–30°N", "30°N–Equator", "Equator–40°S"];
-export const COURSE: [string, string][] = [
-  ["Lanzarote", "inshore rounding marks (NOR C.1.6): at least one reef in on the approach, headsails down for 20 minutes after rounding. The tracker's course leaves the mark to starboard"],
-  ["Island of Trindade", "leave to port"], ["No-go zones (ice limits) · 45°S, 49°S, 50°S", "waypoints left to starboard, from the southern Indian Ocean to Cape Horn (NOR C.1.3)"],
-  ["Cape Leeuwin", "leave to port"], ["Hobart Gate", "mandatory crossing line in Storm Bay; 90 minutes inside before continuing (NOR C.1.5)"], ["Cape Horn", "leave to port"], ["Les Sables-d’Olonne", "finish line"],
+// The course in the order of NOR C.1.3: [what the page prints, how it is passed, the worker's names for the marks on this line].
+export const COURSE: [string, string, string[]][] = [
+  ["Lanzarote", "inshore rounding marks (NOR C.1.6): at least one reef in on the approach, headsails down for 20 minutes after rounding. The tracker's course leaves the mark to starboard", ["Lanzarote"]],
+  ["Island of Trindade", "leave to port", ["Trindade"]],
+  ["Waypoints 45°S · 40°E, 65°E, 90°E, 110°E", "left to starboard: the northern edge of the Indian Ocean no-go zone (NOR C.1.3)", ["45°S 40°E", "45°S 65°E", "45°S 90°E", "45°S 110°E"]],
+  ["Cape Leeuwin", "leave to port", ["Cape Leeuwin"]],
+  ["Hobart Gate", "mandatory crossing line in Storm Bay; 90 minutes inside before continuing (NOR C.1.5)", ["Hobart Gate"]],
+  ["Waypoint 50°S 168°E", "left to starboard", ["50°S 168°E"]],
+  ["Waypoints 49°S · 150°W, 130°W, 110°W", "left to starboard: the northern edge of the Pacific no-go zone", ["49°S 150°W", "49°S 130°W", "49°S 110°W"]],
+  ["Waypoint 50°S 90°W", "left to port", ["50°S 90°W"]],
+  ["Cape Horn", "leave to port", ["Cape Horn"]],
+  ["Les Sables-d’Olonne", "up the Atlantic from south to north, to the finish line", ["Les Sables-d’Olonne"]],
 ];
 export const beaufort = (kt: number) => [1, 4, 7, 11, 17, 22, 28, 34, 41, 48, 56, 64].findIndex(l => kt < l) === -1 ? 12 : [1, 4, 7, 11, 17, 22, 28, 34, 41, 48, 56, 64].findIndex(l => kt < l);

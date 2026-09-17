@@ -25,3 +25,12 @@ export function restOfFleetBandSpeed(perfs: PerfLike[], band: Band, exceptTeamId
 export function extraMiles(b: { sailed_nm: number; made_good_nm: number; restart_at: string | null }): number | null {
   return b.restart_at || !(b.made_good_nm > 0) ? null : b.sailed_nm / b.made_good_nm - 1;
 }
+// Miles `me` gained (+) or lost (−) on `other` in 24 hours. The worker stores every boat's gain on the leader, fix to fix
+// (gain24_nm; blank for a boat without a current fix, and for the leader, whose gain on the leader is nought): the gain of one
+// boat on another is the difference of the two. Null when either boat has no current fix.
+type Gain = { rank: number; gain24_nm: number | null };
+export function gainOn(me: Gain, other: Gain): number | null {
+  const g = (b: Gain) => (b.rank === 1 ? 0 : b.gain24_nm);
+  const a = g(me), c = g(other);
+  return a == null || c == null ? null : a - c;
+}

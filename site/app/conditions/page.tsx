@@ -1,10 +1,11 @@
 // site/app/conditions/page.tsx
 import Shell from "@/components/Shell";
+import Dateline from "@/components/Dateline";
 import Tiles from "@/components/Tiles";
 import { Who } from "@/components/Who";
 import { latestFleet, boatStats, conditionsAt } from "@/lib/db";
 import { beaufort } from "@/lib/text";
-import { dateline, hhmm } from "@/lib/format";
+import { hhmm } from "@/lib/format";
 export const revalidate = 900;
 const Arrow = ({ deg }: { deg: number }) => <svg width="16" height="16" viewBox="0 0 16 16" style={{ verticalAlign: "middle" }}><g transform={`rotate(${deg % 360} 8 8)`}><path d="M8 2 L8 14 M8 14 L4.5 10 M8 14 L11.5 10" stroke="var(--ink)" strokeWidth="1.6" fill="none" strokeLinecap="round" /></g></svg>;
 const older = (b: { last_fix_at: string }, c: { model_at: string }) => new Date(c.model_at).getTime() < new Date(b.last_fix_at).getTime();
@@ -14,7 +15,7 @@ export default async function Page() {
   const by = (f: (c: NonNullable<typeof rows[0]["c"]>) => number, max = true) => rows.reduce((a, r) => (max ? f(r.c!) > f(a.c!) : f(r.c!) < f(a.c!)) ? r : a, rows[0]);
   const strongest = by(c => c.wind_kn), lightest = by(c => c.wind_kn, false), sea = by(c => c.wave_m), gale = rows.filter(r => r.c!.wind_kn >= 34);
   const W = 820, L = 90, pw = W - L - 60, X = (v: number) => L + Math.min(v, 40) / 40 * pw, H = 16 * 24;
-  return <Shell active="Conditions" dateline={`${dateline(fleet.as_of, fleet.race_day)} · MODEL VALUES`} title="CONDITIONS" note={strongest ? `${strongest.b.team.first_name} in ${Math.round(strongest.c!.wind_kn)} kt` : undefined}>
+  return <Shell active="Conditions" dateline={<Dateline asOf={fleet.as_of} raceDay={fleet.race_day} tail=" · MODEL VALUES" />} title="CONDITIONS" note={strongest ? `${strongest.b.team.first_name} in ${Math.round(strongest.c!.wind_kn)} kt` : undefined}>
     {rows.length > 0 && <Tiles items={[
       { k: "Strongest wind", v: `${Math.round(strongest.c!.wind_kn)} kt`, s: `${strongest.b.team.first_name} · gusts ${Math.round(strongest.c!.gust_kn)} kt` },
       { k: "Lightest wind", v: `${Math.round(lightest.c!.wind_kn)} kt`, s: `${lightest.b.team.first_name}` },

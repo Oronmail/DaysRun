@@ -1,9 +1,10 @@
 // site/app/performance/page.tsx — how each boat sails, not where she is: the numbers YB's leaderboard does not give
 import Shell from "@/components/Shell";
+import Dateline from "@/components/Dateline";
 import Tiles from "@/components/Tiles";
 import { Who } from "@/components/Who";
 import { latestFleet, boatStats, boatPerf, type BoatPerf, type BoatStat } from "@/lib/db";
-import { dateline, kn, nm, sgn } from "@/lib/format";
+import { kn, nm, sgn } from "@/lib/format";
 import { extraMiles } from "@/lib/perf";
 export const revalidate = 900;
 const pct = (v: number | null | undefined) => (v == null ? "—" : `${Math.round(v * 100)}%`);
@@ -17,7 +18,7 @@ export default async function Page() {
   const parked = [...rows].filter(r => (r.p.parked_h7 ?? 0) > 0).sort((a, c) => c.p.parked_h7! - a.p.parked_h7!)[0];
   const upwind = [...rows].filter(r => (r.p.pos_json.upwind?.legs ?? 0) >= 3)   /* the same three-leg minimum as the table below */.sort((a, c) => c.p.pos_json.upwind!.speed_kn - a.p.pos_json.upwind!.speed_kn)[0];
   const W = 760, L = 96, pw = W - L - 70, max = Math.max(0.5, ...rated.map(r => r.p.wind_ratio!)), X = (v: number) => L + v / max * pw;
-  return <Shell active="Performance" dateline={dateline(fleet.as_of, fleet.race_day)} title="PERFORMANCE" note={top ? `${top.b.team.first_name} gets the most from the wind` : undefined}>
+  return <Shell active="Performance" dateline={<Dateline asOf={fleet.as_of} raceDay={fleet.race_day} />} title="PERFORMANCE" note={top ? `${top.b.team.first_name} gets the most from the wind` : undefined}>
     <div style={{ fontSize: 19, lineHeight: 1.5, maxWidth: 900 }}>The tracker says where each boat is. This page asks how she is being sailed: how much speed she makes from the wind she has, on which point of sail she wins or loses, how steady she is, and what the dark costs her.</div>
     {rows.length > 0 && <Tiles items={[
       { k: "Most speed for the wind", v: top ? `${pct(top.p.wind_ratio)}` : "—", s: top ? `${top.b.team.first_name} · boat speed as a share of wind speed` : "not enough legs yet" },

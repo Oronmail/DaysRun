@@ -1,7 +1,8 @@
 // site/app/boats/page.tsx
 import Shell from "@/components/Shell";
+import Dateline from "@/components/Dateline";
 import { latestFleet, boatStats, boatPerf } from "@/lib/db";
-import { dateline, kn, nm } from "@/lib/format";
+import { kn, nm } from "@/lib/format";
 export const revalidate = 900;
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2; };
 export default async function Page() {
@@ -19,7 +20,7 @@ export default async function Page() {
       {bs.sort((a, b) => (a.spd7 ?? 0) - (b.spd7 ?? 0)).map((b, i) => <g key={b.team_id}><circle cx={X(b.spd7 ?? 0)} cy={cy} r={6} fill={b.rank === 1 ? "var(--gold)" : "var(--series-1)"} stroke="var(--panel)" strokeWidth={2} /><text x={X(b.spd7 ?? 0)} y={i % 2 ? cy + 19 : cy - 11} textAnchor="middle" fontFamily="var(--font-sans)" fontWeight={600} fontSize={11} fill="var(--ink)">{b.team.first_name}</text></g>)}</g>);
     y += rh + 14; }
   const multi = ordered.filter(([, bs]) => bs.length > 1);
-  return <Shell active="Boats" dateline={dateline(fleet.as_of, fleet.race_day)} title="BOATS" note={multi.map(([g, bs]) => `${bs.length} ${g}s`).join(", ")}>
+  return <Shell active="Boats" dateline={<Dateline asOf={fleet.as_of} raceDay={fleet.race_day} />} title="BOATS" note={multi.map(([g, bs]) => `${bs.length} ${g}s`).join(", ")}>
     <div style={{ maxWidth: 860, fontSize: 19, lineHeight: 1.5 }}>Which design is quickest? {multi.map(([g, bs]) => `${bs.length} ${g}s`).join(", ")} make the like-for-like comparison of this race. Everything else is one of a kind.</div>
     <div className="stack" style={{ display: "grid", gridTemplateColumns: "840px minmax(0,1fr)", gap: 40 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Average speed, last 7 days</div><div className="small" style={{ fontStyle: "italic" }}>all 4-hour legs, by design · gold = the leader</div></div>
