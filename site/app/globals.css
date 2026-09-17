@@ -22,4 +22,27 @@ table.data tbody tr:nth-child(odd) { background: var(--panel); }
 .panel { background: var(--panel); padding: 20px; }
 .pencil { font-family: var(--font-marker), cursive; color: var(--pencil); transform: rotate(-3deg); }
 .wrap { padding: 0 56px; } .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 36px; }
-@media (max-width: 900px) { .wrap { padding: 0 16px; } .grid2 { grid-template-columns: 1fr; } table.data td, table.data th { padding-left: 4px; padding-right: 4px; } }
+.site-header { padding: 14px 56px; }
+.page-title { font-size: 52px; letter-spacing: 6px; }
+.tiles { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 16px; }
+.only-phone { display: none; }
+main svg[viewBox] { max-width: 100%; height: auto; }                /* charts scale down instead of overflowing */
+/* Narrow screens. The column layouts are written inline on each page; .stack and .stack2 collapse them (the !important
+   is what lets a stylesheet rule beat an inline style). Wide tables scroll sideways inside their own box. */
+@media (max-width: 900px) {
+  .wrap { padding: 0 16px; } .site-header { padding: 12px 16px; }
+  .grid2 { grid-template-columns: minmax(0, 1fr); }
+  .stack { grid-template-columns: minmax(0, 1fr) !important; gap: 24px !important; }
+  .stack2, .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+  table.data { display: block; max-width: 100%; overflow-x: auto; }
+  table.data td, table.data th { padding-left: 4px; padding-right: 4px; }
+}
+/* Phones: the approved MainPhone layout — two-by-two tiles, the chart before the ranking, a compact ranking list. */
+@media (max-width: 700px) {
+  .page-title { font-size: 30px; letter-spacing: 3px; }
+  .pencil { font-size: 16px !important; text-align: left !important; max-width: none !important; }
+  .tile { padding: 12px 14px; } .tile .v { font-size: 20px; } .tile .s { font-size: 12px; }
+  .only-desktop { display: none; } .only-phone { display: block; }
+  .grid2 > aside { display: contents !important; } .grid2 .ord-first { order: -1; }   /* !important: the aside's flex is inline */
+  .rule-title { flex-wrap: wrap; gap: 4px 16px; }
+}

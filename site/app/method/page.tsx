@@ -6,9 +6,9 @@ export const revalidate = 3600;
 export default async function Page() {
   const fleet = await latestFleet();
   return <Shell active="Method" dateline="HOW THE NUMBERS ARE MADE" title="METHOD" note="asked in the chat: what does each column mean?">
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 380px", gap: 56 }}>
+    <div className="stack" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 380px", gap: 56 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}><div className="rule-title"><div className="label">Definitions</div></div>
-        {DEFINITIONS.map(([k, v]) => <div key={k} style={{ display: "grid", gridTemplateColumns: "200px minmax(0,1fr)", gap: 24, padding: "14px 0", borderBottom: "1px solid var(--hair)" }}><div className="mont" style={{ fontSize: 14, fontWeight: 600 }}>{k}</div><div style={{ fontSize: 16, lineHeight: 1.55 }}>{v}</div></div>)}</div>
+        {DEFINITIONS.map(([k, v]) => <div key={k} className="stack" style={{ display: "grid", gridTemplateColumns: "200px minmax(0,1fr)", gap: 24, padding: "14px 0", borderBottom: "1px solid var(--hair)" }}><div className="mont" style={{ fontSize: 14, fontWeight: 600 }}>{k}</div><div style={{ fontSize: 16, lineHeight: 1.55 }}>{v}</div></div>)}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
         <div className="panel" style={{ borderLeft: "4px solid var(--loss)" }}><div className="label" style={{ color: "var(--loss)", fontSize: 13 }}>Do not relay</div><div style={{ fontSize: 16, lineHeight: 1.5, paddingTop: 8 }}>Skippers race without outside information. Under the race rules (NOR F.8.2) a skipper who receives another boat’s position from a tracker takes a 48-hour penalty, then disqualification. Please never pass anything from this site to a competitor.</div></div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><div className="rule-title"><div className="label">Sources</div></div>

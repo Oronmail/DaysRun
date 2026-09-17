@@ -20,7 +20,7 @@ export default async function Page() {
       { k: "Lightest wind", v: `${Math.round(lightest.c!.wind_kn)} kt`, s: `${lightest.b.team.first_name}` },
       { k: "Highest waves", v: `${sea.c!.wave_m.toFixed(1)} m`, s: `${sea.b.team.first_name} · significant height · ${Math.round(sea.c!.swell_period_s)}-second swell` },
       { k: "In gale-force wind now", v: gale.length ? `${gale.length}` : "None", s: gale.length ? gale.map(r => r.b.team.first_name).join(", ") : "no boat at 34 kt or more at this report" }]} />}
-    <div style={{ display: "grid", gridTemplateColumns: "860px minmax(0,1fr)", gap: 40 }}>
+    <div className="stack" style={{ display: "grid", gridTemplateColumns: "860px minmax(0,1fr)", gap: 40 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Wind at each boat</div><div className="small" style={{ fontStyle: "italic" }}>mean / gust, in race order</div></div>
         <div className="panel"><svg width={W} height={H + 22} viewBox={`0 -8 ${W} ${H + 30}`} style={{ display: "block" }}>
           {[0, 10, 20, 30, 40].map(v => <g key={v}><line x1={X(v)} y1={0} x2={X(v)} y2={H} stroke="var(--hair)" /><text x={X(v)} y={H + 14} textAnchor="middle" fontFamily="var(--font-mono)" fontSize={10} fill="var(--graphite)">{v} kt</text></g>)}

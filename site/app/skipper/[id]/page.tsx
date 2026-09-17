@@ -27,7 +27,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       { k: "To go", v: `${nm(b.dtf_nm)} nm`, s: `${nm(b.made_good_nm)} nm made good since the start` },
       { k: "24-hour run", v: `${nm(b.run24_nm)} nm`, s: `personal best ${nm(b.best24_nm)} nm, window ending ${dayMonTime(b.best24_at)}` },
       { k: "Best 4-hour leg", v: `${kn(b.best4_kn)} kt`, s: `average speed, leg ending ${dayMonTime(b.best4_at)} UTC` }]} />
-    <div style={{ display: "grid", gridTemplateColumns: "520px minmax(0,1fr)", gap: 40 }}>
+    <div className="stack" style={{ display: "grid", gridTemplateColumns: "520px minmax(0,1fr)", gap: 40 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Track since the start</div><div className="small" style={{ fontStyle: "italic" }}>fleet in grey · ghosts dashed</div></div>
         <div style={{ border: "1px solid var(--ink)", padding: 6, background: "var(--panel)" }}><FleetMap view={view} course={setup.raw_setup.course.nodes} markers={markers} track={track} /></div>
         <div className="small">Position at {hhmm(b.last_fix_at)} UTC: <span className="num">{b.position_text}</span> · sailed about {nm(b.sailed_nm)} nm along the track, measured on 4-hour legs</div></div>
@@ -37,7 +37,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Place in the fleet</div><div className="small" style={{ fontStyle: "italic" }}>at 0000 UTC each day</div></div><div className="panel"><LineChart series={[{ name: "rank", color: "var(--series-1)", vals: daily.map(d => -d.rank) }]} xs={daily.map((_, i) => i)} ymin={-16} ymax={-1} yticks={[-1, -4, -8, -12, -16]} ylab={v => String(Math.round(-v))} xlab={i => dayMon(daily[i].as_of)} height={170} /></div></div>
       </div>
     </div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 24 }}>
+    <div className="stack" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 24 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Conditions at {hhmm(b.last_fix_at)} UTC</div></div>
         {c ? <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>{([["Wind (mean)", `${Math.round(c.wind_kn)} kt from ${String(Math.round(c.wind_dir_deg)).padStart(3, "0")}°`], ["Gusts", `${Math.round(c.gust_kn)} kt`], ["Waves (significant)", `${c.wave_m.toFixed(1)} m`], ["Current sets", `${c.current_kn.toFixed(1)} kt toward ${String(Math.round(c.current_dir_deg)).padStart(3, "0")}°`], ["Sea temp", `${c.sst_c.toFixed(1)} °C`], ["Pressure", `${Math.round(c.mslp_hpa)} hPa`]] as [string, string][]).map(([k, v]) => <div key={k}><div className="small" style={{ fontSize: 12 }}>{k}</div><span className="num" style={{ fontSize: 18 }}>{v}</span></div>)}</div> : <div className="small">No model data for this fix yet.</div>}
         <div className="small" style={{ fontSize: 12 }}>Model values from Open-Meteo, not measured on board.</div></div>

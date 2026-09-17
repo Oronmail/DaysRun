@@ -17,7 +17,7 @@ export default async function Page() {
   const multi = ordered.filter(([, bs]) => bs.length > 1);
   return <Shell active="Boats" dateline={dateline(fleet.as_of, fleet.race_day)} title="BOATS" note={multi.map(([g, bs]) => `${bs.length} ${g}s`).join(", ")}>
     <div style={{ maxWidth: 860, fontSize: 19, lineHeight: 1.5 }}>Which design is quickest? {multi.map(([g, bs]) => `${bs.length} ${g}s`).join(", ")} make the like-for-like comparison of this race. Everything else is one of a kind.</div>
-    <div style={{ display: "grid", gridTemplateColumns: "840px minmax(0,1fr)", gap: 40 }}>
+    <div className="stack" style={{ display: "grid", gridTemplateColumns: "840px minmax(0,1fr)", gap: 40 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Average speed, last 7 days</div><div className="small" style={{ fontStyle: "italic" }}>all 4-hour legs, by design · gold = the leader</div></div>
         <div className="panel"><svg width={W} height={y + 14} viewBox={`0 0 ${W} ${y + 14}`} style={{ display: "block" }}>{[3, 4, 5, 6].map(v => <g key={v}><line x1={X(v)} y1={0} x2={X(v)} y2={y - 6} stroke="var(--hair)" /><text x={X(v)} y={y + 8} textAnchor="middle" fontFamily="var(--font-mono)" fontSize={10} fill="var(--graphite)">{v} kt</text></g>)}{rows}</svg></div></div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}><div className="rule-title"><div className="label">Read with care</div></div>

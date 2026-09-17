@@ -16,12 +16,12 @@ export default async function RecordsPage({ win = "race" }: { win?: RecWin }) {
   const pbs = boats.filter(b => b.pb24 || b.fleet_best24).sort((a, b) => (b.run24_nm ?? 0) - (a.run24_nm ?? 0));
   const best = boats.reduce((a, b) => (b.best24_nm > a.best24_nm ? b : a), boats[0]);
   return <Shell active="Records" dateline={dateline(fleet.as_of, fleet.race_day)} title="RECORDS" note={`${best.team.first_name}’s ${nm(best.best24_nm)} nm still leads`}>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 32 }}>
+    <div className="stack" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 32 }}>
       {board("best4", "Best 4-hour leg", "kt", v => kn(v), "Average speed on one 4-hour leg between two consecutive reports. Start day excluded; a leg spanning a missed report never counts.")}
       {board("best24", "Best 24-hour run", "nm", v => nm(v), "Six consecutive 4-hour legs, summed; none may be missing.")}
       {board("best7", "Best 7-day run", "nm", v => nm(v), "42 consecutive 4-hour legs at sea, none missing. Possible since race day 8; a boat that restarted needs seven days from its restart.")}
     </div>
-    <div className="panel" style={{ borderLeft: "4px solid var(--gold)", display: "grid", gridTemplateColumns: "280px minmax(0,1fr)", gap: 32 }}>
+    <div className="panel stack" style={{ borderLeft: "4px solid var(--gold)", display: "grid", gridTemplateColumns: "280px minmax(0,1fr)", gap: 32 }}>
       <div><div className="label">The last 24 hours</div><div className="small">New marks set in the 24 hours to {dateline(fleet.as_of, fleet.race_day).slice(-8)}.</div></div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 28 }}>{pbs.map(b => <div key={b.team_id} style={{ display: "flex", flexDirection: "column", gap: 2 }}><span className="mont" style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1, color: b.fleet_best24 ? "var(--gold-text)" : "var(--graphite)" }}>{b.fleet_best24 ? "FLEET BEST + PERSONAL BEST" : "PERSONAL BEST"}</span><span className="mont" style={{ fontSize: 15, fontWeight: 600 }}>{b.team.first_name}</span><span className="num" style={{ fontSize: 20 }}>{nm(b.run24_nm)} nm</span></div>)}{pbs.length === 0 && <span className="small">No new marks.</span>}</div>
     </div>
