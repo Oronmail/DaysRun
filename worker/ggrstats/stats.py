@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 from . import config, names
 from .grid import gc_nm, resample, window, legs, slot_of, slot_time, SLOT_S
+from . import perf
 
 DAY = 86400
 
@@ -168,6 +169,26 @@ def compute_snapshot(setup, fixes_by_team, T):
                 continue
             b[f"vs_{key}_nm"] = round(g["dtf_nm"] - b["dtf_nm"]) if g["dtf_nm"] is not None else None
             b[f"vs_{key}_days"] = ghost_time_gap_days(fixes_by_team[gid], b["dtf_nm"], T)
+    # The angles YB does not give (perf.py). All three are fix-to-fix and skip a boat without a current fix, so that a missed
+    # report never shows as a hundred miles lost.
+    def dtf_near(fx, t):
+        f = at_or_before(fx, t)
+        return f["dtf"] / 1852.0 if f and f.get("dtf") and t - f["at"] < 3.5 * 3600 else None
+    leader = boats[0]
+    lead_now, lead_then = dtf_near(racing[leader["id"]], T), dtf_near(racing[leader["id"]], T - DAY)
+    lead_slots = resample(racing[leader["id"]], start_at)
+    lead_track = [lead_slots[k] for k in sorted(lead_slots) if k <= KT]
+    for b in boats:
+        now, then = dtf_near(racing[b["id"]], T), dtf_near(racing[b["id"]], T - DAY)
+        known = b is not leader and None not in (now, then, lead_now, lead_then)
+        b["gain24_nm"] = (then - lead_then) - (now - lead_now) if known else None      # miles gained (+) on today's leader in 24 h
+        near = [o["w24"]["dist_nm"] for o in boats if o is not b and o["w24"] and not o["stale"]
+                and gc_nm(b["lat"], b["lon"], o["lat"], o["lon"]) < 150]
+        ok = b["w24"] and not b["stale"] and len(near) >= 2
+        b["vs_near_nm"] = b["w24"]["dist_nm"] - sorted(near)[len(near) // 2] if ok and len(near) % 2 else (
+            b["w24"]["dist_nm"] - (sorted(near)[len(near) // 2 - 1] + sorted(near)[len(near) // 2]) / 2 if ok else None)
+        b["near_n"] = len(near)
+        b["lever_nm"], b["lever_dir"] = (None, None) if b is leader or b["stale"] else perf.leverage(lead_track, b["lat"], b["lon"])
     best_run = max((b["w24"]["dist_nm"] for b in boats if b["w24"]), default=None)   # None until a 24-hour window exists
     for b in boats:
         run = b["w24"]["dist_nm"] if b["w24"] else 0.0

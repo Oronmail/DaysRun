@@ -12,8 +12,9 @@ def conn():
     from ggrstats import db
     assert "supabase" not in URL, "never point DATABASE_URL_TEST at Supabase: this fixture truncates every table"
     c = db.connect(URL)
-    c.execute(open(pathlib.Path(__file__).parents[2] / "db/migrations/0001_init.sql").read())
-    c.execute("truncate race, team, fix, leaderboard_snap, split, restart, leg, boat_stat, fleet_stat, record_board, sprint_result, conditions, event cascade")
+    for m in sorted((pathlib.Path(__file__).parents[2] / "db/migrations").glob("*.sql")):     # every migration, in order
+        c.execute(m.read_text())
+    c.execute("truncate boat_perf, race, team, fix, leaderboard_snap, split, restart, leg, boat_stat, fleet_stat, record_board, sprint_result, conditions, event cascade")
     c.commit()
     yield c
     c.close()
@@ -46,8 +47,11 @@ def test_snapshot_write_roundtrip_is_idempotent(conn):
     teams = json.load(gzip.open(FIX / "AllPositions3.master.20260916T0230.json.gz"))
     db.upsert_race(conn, "ggr2026", setup); db.upsert_teams(conn, "ggr2026", setup); db.insert_fixes(conn, "ggr2026", teams)
     fixes = db.load_fixes(conn, "ggr2026")
+    from ggrstats import perf
     for t in (T - 4 * 3600, T, T):                                   # the slot before, the slot, and the slot again
         snap = stats.compute_snapshot(setup, fixes, t)
+        for b in snap["boats"]:
+            b["perf"] = perf.compute(fixes[b["id"]], 1788697800, b["restart"]["first_out_at"] if b["restart"] else 0, t, {})
         prev = db.previous_boat_stats(conn, "ggr2026", t)
         db.replace_snapshot(conn, "ggr2026", t, snap)
         db.insert_events(conn, "ggr2026", events.derive(snap, prev, []))
@@ -55,6 +59,10 @@ def test_snapshot_write_roundtrip_is_idempotent(conn):
     one = lambda q: conn.execute(q, (db.ts(T),)).fetchone()[0]
     assert one("select count(*) from boat_stat where as_of=%s") == 16
     assert one("select count(*) from fleet_stat where as_of=%s") == 1
+    assert one("select count(*) from boat_perf where as_of=%s") == 16
+    assert conn.execute("select gain24_nm is null, lever_dir from boat_stat where team_id=6 and as_of=%s", (db.ts(T),)).fetchone() == (True, None)   # the leader
+    assert conn.execute("select gain24_nm is not null and lever_nm > 0 from boat_stat where team_id=10 and as_of=%s", (db.ts(T),)).fetchone()[0] is True
+    assert conn.execute("select count(*) from daily_place where as_of=%s", (db.ts(T),)).fetchone()[0] == 16                                 # T is a 0000 UTC snapshot
     assert one("select count(*) from record_board where as_of=%s") == len(snap["records"])
     assert one("select count(*) from sprint_result where as_of=%s") == len(snap["sprints"])
     assert conn.execute("select rank, round(run24_nm), jsonb_array_length(speed_log_json) from boat_stat where team_id=6 and as_of=%s", (db.ts(T),)).fetchone() == (1, 115, 42)

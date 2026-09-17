@@ -3,7 +3,7 @@
 import argparse, gzip, json, logging, sys, time
 from datetime import datetime, timezone
 import requests
-from . import backfill, backup, config, db, decode, events, stats, weather, yb
+from . import backfill, backup, config, db, decode, events, perf, stats, weather, yb
 from .grid import SLOT_S
 
 log = logging.getLogger("ggrstats")
@@ -42,6 +42,11 @@ def cmd_derive(conn, race, as_of, fixes=None):
     if stats.unreported(snapshot):                   # before the first fix, or YB has not published this report yet
         log.info("derive %s: no boat has reported for this slot yet, skipped (a later run catches up)", datetime.fromtimestamp(as_of, timezone.utc))
         return snapshot
+    winds = db.load_winds(conn, race)                 # small; read each time so the pass after the weather call sees it
+    start_at = min(t["start"] for t in setup["tags"])
+    for b in snapshot["boats"]:
+        t0 = b["restart"]["first_out_at"] if b["restart"] else 0
+        b["perf"] = perf.compute(fixes[b["id"]], start_at, t0, as_of, winds.get(b["id"], {}))
     previous = db.previous_boat_stats(conn, race, as_of)
     db.replace_snapshot(conn, race, as_of, snapshot)
     cond = [dict(zip(("team_id", "wind_kn", "gust_kn"), r)) for r in conn.execute(

@@ -91,7 +91,7 @@ def replace_snapshot(conn, key, as_of, snap):
     # One pipeline: about 50 statements per snapshot travel in a single round trip instead of 50 (each costs 80-150 ms
     # between a GitHub runner or a laptop and the database; re-deriving a whole race would otherwise take hours).
     with conn.pipeline(), conn.cursor() as cur:
-        for t in ("restart", "boat_stat", "fleet_stat", "record_board", "sprint_result"):   # leg rows are upserted, not replaced
+        for t in ("restart", "boat_stat", "boat_perf", "fleet_stat", "record_board", "sprint_result"):   # leg rows are upserted, not replaced
             cur.execute(f"delete from {t} where race_key=%s and as_of=%s", (key, a))
         for b in snap["boats"]:
             if b.get("restart"):
@@ -107,8 +107,8 @@ def replace_snapshot(conn, key, as_of, snap):
             cur.execute("""insert into boat_stat (race_key, team_id, as_of, rank, rank_change, dtf_nm, gap_nm, interval_nm, last_fix_at, stale,
                 lat, lon, position_text, spd4, vmg4, cmg4, spd24, vmg24, run24_nm, spd7, run7_nm, best4_kn, best4_at, best24_nm, best24_at,
                 best7_nm, best7_at, sailed_nm, made_good_nm, vmg7_kn, pb24, fleet_best24, vs_vdh_nm, vs_vdh_days, vs_kirsten_nm, vs_kirsten_days,
-                next_mark, next_mark_nm, next_mark_eta, restart_at, speed_log_json)
-                values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                next_mark, next_mark_nm, next_mark_eta, restart_at, speed_log_json, gain24_nm, vs_near_nm, near_n, lever_nm, lever_dir)
+                values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (key, b["id"], a, b["rank"], b["rank_change"], b["dtf_nm"], b["gap_nm"], b["interval_nm"], ts(b["last_fix_at"]), b["stale"],
                  b["lat"], b["lon"], b["position_text"], w4.get("speed_kn"), w4.get("vmg_kn"), w4.get("cmg_deg"),
                  w24.get("speed_kn"), w24.get("vmg_kn"), w24.get("dist_nm"), w7.get("speed_kn"), w7.get("dist_nm"),
@@ -116,7 +116,12 @@ def replace_snapshot(conn, key, as_of, snap):
                  b["sailed_nm"], b["made_good_nm"], b["vmg7_kn"], b["pb24"], b["fleet_best24"],
                  b["vs_vdh_nm"], b["vs_vdh_days"], b["vs_kirsten_nm"], b["vs_kirsten_days"],
                  b["next_mark"], b["next_mark_nm"], ts(b["next_mark_eta"]), ts(b["restart"]["first_out_at"]) if b.get("restart") else None,
-                 Jsonb(b["speed_log"])))
+                 Jsonb(b["speed_log"]), b.get("gain24_nm"), b.get("vs_near_nm"), b.get("near_n"), b.get("lever_nm"), b.get("lever_dir")))
+            p = b.get("perf")
+            if p:
+                cur.execute("insert into boat_perf values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            (key, b["id"], a, p["wind_ratio"], p["wind_legs"], Jsonb(p["pos"]), p["sd7"], p["share5_7"], p["parked_h7"],
+                             p["night_delta"], p["n_night"], p["n_day"], p["legs"]))
         f = snap["fleet"]
         cur.execute("""insert into fleet_stat values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     (key, a, f["race_day"], f["leader_team_id"], f["spread_nm"], f["best_run24_nm"], f["best_run24_team_id"],
@@ -125,6 +130,14 @@ def replace_snapshot(conn, key, as_of, snap):
                         [(key, a, r["kind"], r["win"], r["rank"], r["team_id"], r["value"], ts(r["at"])) for r in snap["records"]])
         cur.executemany("insert into sprint_result values (%s,%s,%s,%s,%s,%s,%s)",
                         [(key, a, s["sprint"], s["team_id"], ts(s["start_at"]), ts(s["end_at"]), s["hours"]) for s in snap["sprints"]])
+
+def load_winds(conn, key):
+    """{team_id: {report time: (model wind kt, direction it blows FROM)}} for the Performance statistics."""
+    from .grid import slot_of, slot_time
+    out = {}
+    for tid, at, w, wd in conn.execute("select team_id, extract(epoch from fix_at)::bigint, wind_kn, wind_dir_deg from conditions where race_key=%s", (key,)):
+        out.setdefault(tid, {})[slot_time(slot_of(int(at)))] = (w, wd)
+    return out
 
 def insert_conditions(conn, key, rows):
     conn.cursor().executemany("""insert into conditions values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) on conflict do nothing""",
