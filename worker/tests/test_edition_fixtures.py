@@ -22,10 +22,19 @@ def test_sample_holds_exactly_the_brief_ids_sorted_and_mostly_complete():
     for race, ids in KEEP.items():
         teams = _sample(race)
         assert {t["id"] for t in teams} == ids, race
+        assert [t["id"] for t in teams] == sorted(t["id"] for t in teams), race           # sorted by id
         for t in teams:
             ats = [m["at"] for m in t["moments"]]
             assert ats == sorted(ats), (race, t["id"])                                   # sorted by time
             assert len(t["moments"]) >= 0.6 * EXPECTED[race][t["id"]], (race, t["id"], len(t["moments"]))
+
+def test_sample_gz_has_a_fixed_mtime_and_no_file_name_in_its_header():
+    """The maker writes gzip.compress(..., mtime=0): byte 3 (FLG) carries no FNAME bit and bytes 4-8 (MTIME) are
+    zero, so the same JSON text always gzips to the same bytes — the reproducibility the docstring claims."""
+    for race in KEEP:
+        raw = (FIX / f"{race}.sample.json.gz").read_bytes()
+        assert raw[3] == 0, race                    # FLG: no FNAME (bit 3), no other flag either
+        assert raw[4:8] == b"\x00\x00\x00\x00", race  # MTIME fixed at 0
 
 def test_fixture_race_start_matches_the_curated_start():
     for race in KEEP:
