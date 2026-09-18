@@ -42,7 +42,7 @@ def cmd_derive(conn, race, as_of, fixes=None):
     """fixes: pass the result of db.load_fixes when deriving many slots in one run, so the track is read once, not per slot."""
     setup = conn.execute("select raw_setup from race where key=%s", (race,)).fetchone()[0]
     fixes = fixes if fixes is not None else db.load_fixes(conn, race)
-    snapshot = stats.compute_snapshot(setup, fixes, as_of)
+    snapshot = stats.compute_snapshot(setup, fixes, as_of, db.load_conditions(conn, race))
     if stats.unreported(snapshot):                   # before the first fix, or YB has not published this report yet
         log.info("derive %s: no boat has reported for this slot yet, skipped (a later run catches up)", datetime.fromtimestamp(as_of, timezone.utc))
         return snapshot

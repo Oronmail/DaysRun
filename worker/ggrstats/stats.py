@@ -1,7 +1,7 @@
 # worker/ggrstats/stats.py
 """Everything derived from fixes. Pure functions on plain dicts; the database is handled in run.py."""
 from datetime import datetime, timezone
-from . import config, names
+from . import config, names, weather_records
 from .grid import gc_nm, resample, window, legs, slot_of, slot_time, SLOT_S
 from . import perf, duels, course
 
@@ -156,7 +156,8 @@ def sanity_problems(snapshot, previous, course_nm):
                 out.append(f"{b['first']}: distance to finish rose by {round(rise)} nm in {round(hours)} hours (limit {round(DTF_RISE_LIMIT_NM_PER_4H * hours / 4.0)})")
     return out
 
-def compute_snapshot(setup, fixes_by_team, T):
+def compute_snapshot(setup, fixes_by_team, T, conditions=None):
+    """conditions: db.load_conditions, for the weather boards (None = boards without weather, as verify and the tests call it)."""
     start_at = min(t["start"] for t in setup["tags"])
     course_nm = setup["course"]["distance"] / 1.852
     KT = slot_of(T)
@@ -258,6 +259,9 @@ def compute_snapshot(setup, fixes_by_team, T):
         for win, since in (("7d", T - 7 * DAY), ("30d", T - 30 * DAY), ("race", 0)):
             rows = sorted([b for b in boats if b[key] and b[atkey] and b[atkey] >= since], key=lambda b: -b[key])[:5]
             records += [{"kind": kind, "win": win, "rank": i + 1, "team_id": b["id"], "value": b[key], "at": b[atkey]} for i, b in enumerate(rows)]
+
+    if conditions:
+        records += weather_records.compute({tid: rows for tid, rows in conditions.items() if tid in racing}, T)
 
     sprints = []
     for name, l0, l1 in config.SPRINTS:

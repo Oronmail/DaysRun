@@ -134,6 +134,13 @@ def replace_snapshot(conn, key, as_of, snap):
         cur.executemany("insert into sprint_result values (%s,%s,%s,%s,%s,%s,%s)",
                         [(key, a, s["sprint"], s["team_id"], ts(s["start_at"]), ts(s["end_at"]), s["hours"]) for s in snap["sprints"]])
 
+def load_conditions(conn, key):
+    """{team_id: [{at, wind_kn, gust_kn, wave_m}, ...]} sorted by time, for the weather boards."""
+    out = {}
+    for tid, at, w, g, h in conn.execute("select team_id, extract(epoch from fix_at)::bigint, wind_kn, gust_kn, wave_m from conditions where race_key=%s order by team_id, fix_at", (key,)):
+        out.setdefault(tid, []).append({"at": int(at), "wind_kn": w, "gust_kn": g, "wave_m": h})
+    return out
+
 def load_winds(conn, key):
     """{team_id: {report time: (model wind kt, direction it blows FROM)}} for the Performance statistics. A row is keyed by the
     report hour its fix rounds to; when a fast tracker leaves two rows in one hour (Andrea at Lanzarote: 23:00:03 and 00:02:59),
