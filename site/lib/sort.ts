@@ -2,7 +2,7 @@
 export type SortKey = "rank" | "change" | "name" | "dtf" | "gap" | "gain" | "near" | "run" | "spd7" | "vdh";
 export type SortDir = "asc" | "desc";
 export type Win = "4h" | "24h" | "7d";
-type Row = { rank: number; rank_change: number; dtf_nm: number; gap_nm: number; gain24_nm: number | null; vs_near_nm: number | null; run24_nm: number | null; run7_nm: number | null; spd4: number | null; spd7: number | null; vs_vdh_days: number | null; team: { name: string } };
+type Row = { rank: number; rank_change: number | null; dtf_nm: number; gap_nm: number; gain24_nm: number | null; vs_near_nm: number | null; run24_nm: number | null; run7_nm: number | null; spd4: number | null; spd7: number | null; vs_vdh_days: number | null; team: { name: string } };
 const surname = (name: string) => name.split(" ").slice(1).join(" ").toLowerCase() || name.toLowerCase();
 const value = (b: Row, key: SortKey, win: Win): number | string | null =>
   key === "rank" ? b.rank : key === "change" ? b.rank_change : key === "name" ? surname(b.team.name) : key === "dtf" ? b.dtf_nm

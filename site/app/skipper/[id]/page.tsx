@@ -32,7 +32,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const lead = boats[0];
   return <Shell active="Skippers" dateline={`SKIPPERS · ${b.team.country_code} · SAIL ${b.team.sail}`} title={b.team.name.toUpperCase()} sub={<><i>{b.team.yacht}</i> · {b.team.model} · {ord(b.rank)} of {fleet.racing} at race day {fleet.race_day}</>} note={`${sgn(b.vs_kirsten_days)} days on Neuschäfer’s 2022 pace`}>
     <Tiles items={[
-      { k: "Place", v: ord(b.rank), s: `${b.rank_change === 0 ? "no change" : (b.rank_change > 0 ? `up ${b.rank_change}` : `down ${-b.rank_change}`)} in 24 h · ${b.rank === 1 ? (boats[1] ? `${nm(boats[1].gap_nm)} nm ahead of ${boats[1].team.first_name}` : "leading") : `${nm(b.gap_nm)} nm behind ${lead.team.first_name}`}` },
+      { k: "Place", v: ord(b.rank), s: `${b.rank_change == null ? "no change of place shown: tracker silent now or 24 h ago" : b.rank_change === 0 ? "no change in 24 h" : b.rank_change > 0 ? `up ${b.rank_change} in 24 h` : `down ${-b.rank_change} in 24 h`} · ${b.rank === 1 ? (boats[1] ? `${nm(boats[1].gap_nm)} nm ahead of ${boats[1].team.first_name}` : "leading") : `${nm(b.gap_nm)} nm behind ${lead.team.first_name}`}` },
       { k: "To go", v: `${nm(b.dtf_nm)} nm`, s: `${nm(b.made_good_nm)} nm made good since the start` },
       { k: "24-hour run", v: `${nm(b.run24_nm)} nm`, s: `personal best ${nm(b.best24_nm)} nm, window ending ${dayMonTime(b.best24_at)}` },
       { k: "Best 4-hour leg", v: `${kn(b.best4_kn)} kt`, s: `average speed, leg ending ${dayMonTime(b.best4_at)} UTC` }]} />

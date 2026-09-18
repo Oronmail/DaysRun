@@ -2,9 +2,10 @@
 import Link from "next/link";
 import type { BoatStat } from "@/lib/db";
 import { hhmm, dayMon } from "@/lib/format";
-export function Tri({ n }: { n: number }) {
-  if (n > 0) return <span className="gain" style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><svg width="8" height="7"><path d="M4 0 L8 7 L0 7 Z" fill="currentColor" /></svg>{n}</span>;
-  if (n < 0) return <span className="loss" style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><svg width="8" height="7"><path d="M0 0 L8 0 L4 7 Z" fill="currentColor" /></svg>{-n}</span>;
+// n is blank when the boat had no current fix now or 24 hours ago: there is no change of place to show, so the dash.
+export function Tri({ n }: { n: number | null }) {
+  if (n != null && n > 0) return <span className="gain" style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><svg width="8" height="7"><path d="M4 0 L8 7 L0 7 Z" fill="currentColor" /></svg>{n}</span>;
+  if (n != null && n < 0) return <span className="loss" style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><svg width="8" height="7"><path d="M0 0 L8 0 L4 7 Z" fill="currentColor" /></svg>{-n}</span>;
   return <span style={{ color: "var(--graphite)" }}>–</span>;
 }
 export function Who({ b, sub = true }: { b: BoatStat; sub?: boolean }) {

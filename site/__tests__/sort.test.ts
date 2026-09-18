@@ -28,4 +28,9 @@ describe("the phone list's orderings", () => {
     const label = (w: "4h" | "24h" | "7d") => phoneSortOptions(w).find(o => o.key === "run")!.label;
     expect(label("24h")).toBe("24-hour run"); expect(label("4h")).toBe("4-hour leg speed"); expect(label("7d")).toBe("7-day run");
   });
+  it("puts a blank change of place (no current fix at one end of the 24 hours) last, whichever way the column is sorted", () => {
+    const rows = [b(1, 1, { rank_change: null }), b(2, 2, { rank_change: -1 }), b(3, 3, { rank_change: 2 })];
+    expect(sortBoats(rows, "change", "desc", "24h").map(r => r.team_id)).toEqual([3, 2, 1]);
+    expect(sortBoats(rows, "change", "asc", "24h").map(r => r.team_id)).toEqual([2, 3, 1]);
+  });
 });
