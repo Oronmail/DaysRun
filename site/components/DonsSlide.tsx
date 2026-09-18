@@ -2,7 +2,7 @@
 // numbers, the fleet's runs as the picture, three stories). Dark and large because it is watched as video on phones. Every length
 // is in u = 1/1920 of the width (or 1/1080 of the height, whichever is smaller), so it fills any screen share exactly.
 // All numbers and sentences come from lib/slide.ts; this file only draws.
-import type { Column } from "@/lib/slide";
+import { numberLift, scaleMax, type Column } from "@/lib/slide";
 import { nm, kn, sgn, hhmm, dayMon, SITE_NAME, SITE_HOST } from "@/lib/format";
 const K = { bg: "#10161C", panel: "#18222C", line: "#26323D", text: "#ECE6D6", muted: "#9AA3AA", gold: "#DEB200", gain: "#5FB3A1", loss: "#E0604A", amber: "#F2A93B", bar: "#5C6B78" };
 const u = (n: number) => `calc(${n} * var(--u))`;
@@ -36,7 +36,7 @@ function Col({ c, lead, fastestSlot, asOf, H, max }: { c: Column; lead: boolean;
   const flag = c.stale ? `missed ${hhmm(asOf)}` : bridged ? "tracker silent" : c.pb ? "personal best" : null;
   return <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: u(H + 128), minWidth: 0, opacity: c.stale ? 0.45 : 1 }}>
     <div style={{ width: 0, display: "flex", justifyContent: "center", fontFamily: SANS, fontSize: u(14), fontWeight: 700, letterSpacing: u(0.6), textTransform: "uppercase", whiteSpace: "nowrap", color: c.stale || bridged ? K.amber : K.gain, minHeight: u(18) }}>{flag ?? " "}</div>   {/* zero width: a long word never pushes its column off the grid */}
-    <div style={{ fontFamily: MONO, fontSize: u(28), color: gold, marginBottom: u(6) }}>{c.stale ? "—" : nm(c.run)}</div>
+    <div style={{ fontFamily: MONO, fontSize: u(28), color: gold, marginBottom: u(6 + (c.stale ? 0 : numberLift(c.run, c.dayBefore, max, H))) }}>{c.stale ? "—" : nm(c.run)}</div>   {/* above the day-before line when yesterday was the longer run */}
     <div style={{ width: u(74), position: "relative", display: "flex", flexDirection: "column", gap: u(1) }}>{c.stale ? null : blocks}
       {!c.stale && c.dayBefore != null && <div style={{ position: "absolute", left: u(-7), right: u(-7), bottom: u(c.dayBefore / max * H), borderTop: `${u(3)} solid ${K.text}` }} />}</div>
     <div style={{ fontFamily: SANS, fontSize: u(21), fontWeight: 600, marginTop: u(7), color: gold }}>{c.first}</div>
@@ -44,7 +44,7 @@ function Col({ c, lead, fastestSlot, asOf, H, max }: { c: Column; lead: boolean;
   </div>;
 }
 export default function DonsSlide({ d }: { d: SlideData }) {
-  const day = new Date(d.asOf), lead = d.biggest, max = Math.max(190, ...d.cols.map(c => (c.stale ? 0 : c.run ?? 0))) * 1.0, H = 252, delta = d.average != null && d.averageBefore != null ? Math.round(d.average) - Math.round(d.averageBefore) : null;
+  const day = new Date(d.asOf), lead = d.biggest, max = scaleMax(d.cols), H = 252, delta = d.average != null && d.averageBefore != null ? Math.round(d.average) - Math.round(d.averageBefore) : null;
   const fastestSlot = (c: Column) => (d.fastest && d.fastest.team_id === c.team_id ? 5 - Math.round((day.getTime() - new Date(d.fastest.end_slot).getTime()) / (4 * 3600 * 1000)) : null);
   const group = (g: [number, string[]][]) => g.map(([n, who]) => `${n} ${who.join(", ")}`).join(" · ");
   return <div style={{ ["--u" as string]: "min(calc(100vw / 1920), calc(100vh / 1080))", minHeight: "100vh", background: K.bg, display: "grid", placeItems: "center" } as React.CSSProperties}>

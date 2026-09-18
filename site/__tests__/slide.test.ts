@@ -1,6 +1,6 @@
 // site/__tests__/slide.test.ts — the daily slide's numbers and sentences (lib/slide.ts). The cases are the fleet of 17 Sep 2026 1600 UTC.
 import { describe, it, expect } from "vitest";
-import { sixLegs, columns, biggestRun, fleetAverage, fastestLeg, leaderLine, ghostLine } from "../lib/slide";
+import { sixLegs, columns, biggestRun, fleetAverage, fastestLeg, leaderLine, ghostLine, scaleMax, numberLift } from "../lib/slide";
 import { placeGroups } from "../lib/moves";
 
 const AS_OF = "2026-09-17T16:00:00+00:00", H4 = 4 * 3600 * 1000, T = new Date(AS_OF).getTime();
@@ -81,5 +81,28 @@ describe("against the 2018 winner, and places", () => {
   it("groups the places gained and lost like the feed does, among boats with a current fix", () => {
     const g = placeGroups([boat(1, "A", 1, 1, { rank_change: 0 }), boat(2, "B", 2, 1, { rank_change: 1 }), boat(3, "C", 3, 1, { rank_change: -1 }), boat(4, "D", 4, 1, { rank_change: 5, stale: true })]);
     expect(g).toEqual({ ups: [[1, ["B"]]], downs: [[1, ["C"]]] });
+  });
+  it("lifts a column's number above the day-before line when yesterday's run was the longer one, so the line never strikes through it", () => {
+    expect(numberLift(159, 171, 190, 252)).toBeCloseTo((171 - 159) / 190 * 252 + 8, 5);   // the line sits 12 nm above the bar: the number goes above the line
+    expect(numberLift(151, 140, 190, 252)).toBe(0);                                        // yesterday shorter: the line is inside the bar, nothing to avoid
+    expect(numberLift(150, 150, 190, 252)).toBeCloseTo(8, 5);                              // level with the bar's top: still in the number's way
+    expect(numberLift(150, null, 190, 252)).toBe(0);
+    expect(numberLift(null, 140, 190, 252)).toBe(0);                                       // a boat that missed the report draws neither bar nor line
+  });
+  it("scales the chart to hold yesterday's runs too, so a lifted number cannot leave its tile", () => {
+    const cols = [{ stale: false, run: 159, dayBefore: 204 }, { stale: false, run: 151, dayBefore: 140 }, { stale: true, run: 300, dayBefore: 300 }] as never[];
+    expect(scaleMax(cols)).toBe(204);                                                      // a missed boat draws nothing and does not count
+    expect(scaleMax([{ stale: false, run: 120, dayBefore: 110 }] as never[])).toBe(190);   // never tighter than 190 nm
+  });
+  it("calls a run a personal best only when it equals the boat's own best, never because it is the fleet's longest run of the day", () => {
+    // 18 Sep 16:00: Henry's 159 nm was the longest run of the last 24 hours (the worker's fleet_best24), a day after his 180: the board said "personal best".
+    const legs: never[] = [];
+    const henry = columns([boat(12, "Henry", 9, 158.8, { fleet_best24: true, best24_nm: 179.7 })], [], legs, "2026-09-18T16:00:00+00:00")[0];
+    expect(henry.pb).toBe(false);
+    const yesterday = columns([boat(12, "Henry", 10, 179.7, { fleet_best24: true, best24_nm: 179.7 })], [], legs, "2026-09-17T20:00:00+00:00")[0];
+    expect(yesterday.pb).toBe(true);
+    const pat = columns([boat(10, "Pat", 2, 155.2, { pb24: true, best24_nm: 155.2 })], [], legs, "2026-09-18T08:00:00+00:00")[0];
+    expect(pat.pb).toBe(true);
+    expect(columns([boat(3, "Guido", 7, null, { best24_nm: 165 })], [], legs, "2026-09-18T08:00:00+00:00")[0].pb).toBe(false);   // no run, no best
   });
 });

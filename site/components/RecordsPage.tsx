@@ -5,6 +5,7 @@ import Dateline from "@/components/Dateline";
 import { latestFleet, boatStats, recordBoard } from "@/lib/db";
 import { nm, kn, hhmm, dayMon, dayMonTime } from "@/lib/format";
 import { WEATHER_BOARDS, weatherLine, type WeatherKind } from "@/lib/weatherRecords";
+import { isPersonalBest } from "@/lib/slide";
 export type RecWin = "7d" | "30d" | "race";
 export default async function RecordsPage({ win = "race" }: { win?: RecWin }) {
   const fleet = await latestFleet(); const [boats, recs] = await Promise.all([boatStats(fleet.as_of), recordBoard(fleet.as_of)]);
@@ -25,7 +26,7 @@ export default async function RecordsPage({ win = "race" }: { win?: RecWin }) {
       <div className="small" style={{ fontSize: 12 }}>{valid}</div></div>;
   };
   const weatherOf = (teamId: number, kind: WeatherKind) => recs.find(r => r.kind === kind && r.win === "race" && r.team_id === teamId);
-  const pbs = boats.filter(b => b.pb24 || b.fleet_best24).sort((a, b) => (b.run24_nm ?? 0) - (a.run24_nm ?? 0));
+  const pbs = boats.filter(b => !b.stale && isPersonalBest(b)).sort(   /* a new mark is a personal best; the fleet's longest run of the day is one only if it is also that */(a, b) => (b.run24_nm ?? 0) - (a.run24_nm ?? 0));
   const best = boats.reduce((a, b) => (b.best24_nm > a.best24_nm ? b : a), boats[0]);
   return <Shell active="Records" dateline={<Dateline asOf={fleet.as_of} raceDay={fleet.race_day} />} title="RECORDS" note={`${best.team.first_name}’s ${nm(best.best24_nm)} nm still leads`}>
     <div className="stack" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 32 }}>
