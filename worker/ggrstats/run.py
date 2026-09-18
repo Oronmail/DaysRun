@@ -59,22 +59,35 @@ def cmd_derive(conn, race, as_of, fixes=None):
         t0 = b["restart"]["first_out_at"] if b["restart"] else 0
         b["perf"] = perf.compute(fixes[b["id"]], start_at, t0, as_of, winds.get(b["id"], {}))
     db.replace_snapshot(conn, race, as_of, snapshot)
-    cond = [dict(zip(("team_id", "wind_kn", "gust_kn"), r)) for r in conn.execute(
-        "select team_id, wind_kn, gust_kn from conditions where race_key=%s and fix_at=%s", (race, db.ts(as_of)))]
+    cond = db.conditions_for_report(conn, race, as_of)   # nearest row per boat within 20 min: a tracker reports at 12:00:14, not 12:00:00
     n = db.insert_events(conn, race, events.derive(snapshot, previous, cond))
     conn.commit()
     log.info("derive %s: %d boats, %d new events", datetime.fromtimestamp(as_of, timezone.utc), len(snapshot["boats"]), n)
     return snapshot
 
 def cmd_weather(conn, race, as_of):
-    rows = conn.execute("""select team_id, extract(epoch from last_fix_at)::bigint, lat, lon from boat_stat
-                           where race_key=%s and as_of=%s""", (race, db.ts(as_of))).fetchall()
-    have = {r[0] for r in conn.execute("select team_id from conditions where race_key=%s and fix_at in (select last_fix_at from boat_stat where race_key=%s and as_of=%s)", (race, race, db.ts(as_of)))}
-    pts = [{"team_id": t, "fix_at": at, "lat": lat, "lon": lon} for t, at, lat, lon in rows if t not in have]
+    """Model conditions for every boat of one report that has none yet (its own fix: see db.missing_weather_points)."""
+    pts = db.missing_weather_points(conn, race, as_of=as_of)
     if pts:
         db.insert_conditions(conn, race, weather.fetch_conditions(pts))
         conn.commit()
     log.info("weather: %d points fetched", len(pts))
+
+def cmd_weather_sweep(conn, race, since, until, pace_s=4, limit=None):
+    """Fill the holes of older reports: every (boat, fix) pair since `since` without a row, one call per UTC day, `pace_s`
+    between calls (2 requests of up to 16 x 6 points each: well under Open-Meteo's 600 weighted calls a minute). Inserts only;
+    a row that exists is never touched. Returns the number of points fetched. Used by `all` for the last days (a fix that
+    reached YB late gets its wind) and by `weather --since` for a one-off fill of history."""
+    pts = db.missing_weather_points(conn, race, since=since, until=until, limit=limit)
+    days = {}
+    for p in pts:
+        days.setdefault(datetime.fromtimestamp(p["fix_at"], timezone.utc).date(), []).append(p)
+    for i, (day, group) in enumerate(sorted(days.items())):
+        if i: time.sleep(pace_s)
+        db.insert_conditions(conn, race, weather.fetch_conditions(group))
+        conn.commit()
+        log.info("weather sweep %s: %d points fetched", day, len(group))
+    return len(pts)
 
 def safe_weather(conn, race, as_of):
     """Open-Meteo is a free service with per-minute, hourly and daily limits (HTTP 429). The statistics never wait for it:
@@ -137,7 +150,7 @@ def main(argv=None):
     ap.add_argument("--race", default=config.RACE_KEY)
     ap.add_argument("--master", help="backfill: path to AllPositions3.master.json.gz")
     ap.add_argument("--snapshots", help="backfill: directory of <endpoint>.<stamp>.gz files")
-    ap.add_argument("--since", help="backfill/derive: derive every slot from this ISO time")
+    ap.add_argument("--since", help="backfill/derive: derive every slot from this ISO time; weather: fill every missing (boat, fix) pair from this ISO time, paced")
     ap.add_argument("--golden", default="tests/fixtures/golden.snap.json")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -157,7 +170,10 @@ def main(argv=None):
             for t in slots:
                 cmd_derive(conn, a.race, t, fixes)
         elif a.command == "weather":
-            cmd_weather(conn, a.race, as_of)
+            if a.since:
+                print(f"points fetched: {cmd_weather_sweep(conn, a.race, parse_iso(a.since), as_of)}")
+            else:
+                cmd_weather(conn, a.race, as_of)
         elif a.command == "all":
             with monitoring.checkin("worker-all"):       # a run that never starts, or fails twice running, is noticed
                 cmd_capture(conn, a.race)
@@ -170,6 +186,10 @@ def main(argv=None):
                     cmd_derive(conn, a.race, t, fixes)
                     if safe_weather(conn, a.race, t):
                         cmd_derive(conn, a.race, t, fixes)   # second pass so gale events see the weather
+                try:                                          # a fix that reached YB late, or a call that failed days ago: swept, bounded, never fatal
+                    cmd_weather_sweep(conn, a.race, since=as_of - 3 * 86400, until=as_of, limit=48)
+                except Exception as e:
+                    conn.rollback(); log.warning("weather sweep failed: %s", e); monitoring.warn("the weather sweep failed", reason=type(e).__name__)
                 cmd_revalidate()
         elif a.command == "backfill":
             setup_path = sorted(__import__("pathlib").Path(a.snapshots).glob("RaceSetup.*.gz"))[-1]

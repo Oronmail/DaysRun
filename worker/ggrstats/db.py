@@ -135,12 +135,37 @@ def replace_snapshot(conn, key, as_of, snap):
                         [(key, a, s["sprint"], s["team_id"], ts(s["start_at"]), ts(s["end_at"]), s["hours"]) for s in snap["sprints"]])
 
 def load_winds(conn, key):
-    """{team_id: {report time: (model wind kt, direction it blows FROM)}} for the Performance statistics."""
+    """{team_id: {report time: (model wind kt, direction it blows FROM)}} for the Performance statistics. A row is keyed by the
+    report hour its fix rounds to; when a fast tracker leaves two rows in one hour (Andrea at Lanzarote: 23:00:03 and 00:02:59),
+    the one nearest the hour wins, whatever order the table returns them in."""
     from .grid import slot_of, slot_time
-    out = {}
+    out, off = {}, {}
     for tid, at, w, wd in conn.execute("select team_id, extract(epoch from fix_at)::bigint, wind_kn, wind_dir_deg from conditions where race_key=%s", (key,)):
-        out.setdefault(tid, {})[slot_time(slot_of(int(at)))] = (w, wd)
+        k = slot_time(slot_of(int(at))); d = abs(int(at) - k)
+        if (tid, k) not in off or d < off[(tid, k)]:
+            out.setdefault(tid, {})[k] = (w, wd); off[(tid, k)] = d
     return out
+
+def conditions_for_report(conn, key, as_of, tol_s=20 * 60):
+    """One row per boat for a report hour: the row whose fix lies nearest the hour, within the grid's own tolerance (a tracker
+    reports at 12:00:14, not 12:00:00). Read by the gale events."""
+    rows = conn.execute("""select distinct on (team_id) team_id, wind_kn, gust_kn from conditions
+                           where race_key=%s and fix_at between %s and %s order by team_id, abs(extract(epoch from fix_at) - %s)""",
+                        (key, ts(as_of - tol_s), ts(as_of + tol_s), as_of)).fetchall()
+    return [dict(zip(("team_id", "wind_kn", "gust_kn"), r)) for r in rows]
+
+def missing_weather_points(conn, key, as_of=None, since=None, until=None, limit=None):
+    """The (boat, fix) pairs of stored reports that have no conditions row yet: for one report (as_of), or every report from
+    `since` to `until`, oldest first, at most `limit`. The pair is the boat's OWN last fix: the earlier test asked whether the boat
+    held a row at any boat's fix time, so while one tracker was silent every boat sharing its stuck fix second was skipped."""
+    where, args = ["b.race_key=%s", "c.team_id is null"], [key]
+    if as_of is not None: where.append("b.as_of=%s"); args.append(ts(as_of))
+    if since is not None: where.append("b.as_of>=%s"); args.append(ts(since))
+    if until is not None: where.append("b.as_of<=%s"); args.append(ts(until))
+    q = f"""select distinct b.team_id, extract(epoch from b.last_fix_at)::bigint as fix_at, b.lat, b.lon from boat_stat b
+            left join conditions c on c.race_key=b.race_key and c.team_id=b.team_id and c.fix_at=b.last_fix_at
+            where {' and '.join(where)} and b.last_fix_at is not null order by 2, 1""" + (f" limit {int(limit)}" if limit else "")
+    return [dict(zip(("team_id", "fix_at", "lat", "lon"), r)) for r in conn.execute(q, args)]
 
 def insert_conditions(conn, key, rows):
     conn.cursor().executemany("""insert into conditions values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) on conflict do nothing""",
