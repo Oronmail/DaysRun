@@ -27,7 +27,7 @@ export default async function FleetPage({ window = "24h" }: { window?: Win }) {
   const bestRun = boats.find(b => b.team_id === fleet.best_run24_team_id);
   const view = fleetView(boats, 358);
   // No names on the chart: the pointer shows a boat's name, and four permanent labels out of sixteen said little (owner, 17 Sep).
-  const markers: Marker[] = boats.map(b => ({ lat: b.lat, lon: b.lon, kind: b.rank === 1 ? "lead" : "boat", name: b.team.first_name ?? b.team.name, href: `/skipper/${b.team_id}`, tip: boatTip(b) }));
+  const markers: Marker[] = boats.map(b => ({ lat: b.lat, lon: b.lon, kind: b.rank === 1 ? "lead" : "boat", colour: b.team.colour, name: b.team.first_name ?? b.team.name, href: `/skipper/${b.team_id}`, tip: boatTip(b) }));
   return <Shell active="Fleet" dateline={<Dateline asOf={fleet.as_of} raceDay={fleet.race_day} />} title="FLEET POSITIONS" note={`${lead.team.first_name} ${nm(lead.next_mark_nm)} nm from ${lead.next_mark}`}>
     <Tiles items={[
       { k: "Leader", v: lead.team.name, s: `${lead.team.model} · ${nm(lead.dtf_nm)} nm to go` },

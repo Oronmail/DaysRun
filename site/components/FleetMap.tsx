@@ -4,7 +4,7 @@ import { marksInView, markNamed, edgePointer } from "@/lib/marks";
 import Tips, { type Target } from "./Tips";
 import type { Tip } from "@/lib/tips";
 // name + href: the boat's name shows when the pointer is over its dot, and the dot opens the skipper's page (CSS only: .map-boat).
-export type Marker = { lat: number; lon: number; label?: string; side?: "l" | "r"; kind: "boat" | "lead" | "ghost" | "mark" | "dim" | "hi"; name?: string; href?: string; tip?: Tip };   // tip: the box shown when the pointer is on the boat (it then replaces the bare name)
+export type Marker = { lat: number; lon: number; label?: string; side?: "l" | "r"; kind: "boat" | "lead" | "ghost" | "mark" | "dim" | "hi"; colour?: string | null; name?: string; href?: string; tip?: Tip };   // tip: the box shown when the pointer is on the boat (it then replaces the bare name)
 // next: the next mark of the boat the chart is about (the leader on the Fleet page). On the chart it is drawn with the other marks
 // in view; beyond the chart, an arrow on the edge points at it from that boat and says how far it is.
 export default function FleetMap({ view, course, markers, track, note, next, open = "left" }: { open?: "left" | "right"; view: View; course: { lat: number; lon: number }[]; markers: Marker[]; track?: { lat: number; lon: number }[]; note?: { lat: number; lon: number; lines: string[] }; next?: { name: string; from: { lat: number; lon: number }; text: string } }) {
@@ -25,7 +25,9 @@ export default function FleetMap({ view, course, markers, track, note, next, ope
       {m.kind === "mark" && <path d={`M${x},${y - 6} L${x + 6},${y} L${x},${y + 6} L${x - 6},${y} Z`} fill="none" stroke="var(--magenta)" strokeWidth={1.6} />}
       {m.kind === "ghost" && <circle cx={x} cy={y} r={5} fill="none" stroke="var(--graphite)" strokeWidth={1.4} strokeDasharray="2 2" />}
       {m.kind === "dim" && <circle cx={x} cy={y} r={3} fill="var(--bar)" stroke="var(--panel)" strokeWidth={1.5} />}
-      {(m.kind === "boat" || m.kind === "lead" || m.kind === "hi") && <circle cx={x} cy={y} r={m.kind === "hi" ? 5 : 4} fill={m.kind === "boat" ? "var(--ink)" : "var(--gold)"} stroke={m.kind === "hi" ? "var(--ink)" : "var(--panel)"} strokeWidth={m.kind === "hi" ? 1.5 : 2} />}
+      {/* A boat wears the colour its dot has on the official tracker, which is how followers know the boats apart; the ink ring
+          keeps a pale one (yellow, cyan) a shape on paper, and the leader keeps its gold ring. */}
+      {(m.kind === "boat" || m.kind === "lead" || m.kind === "hi") && <circle cx={x} cy={y} r={m.kind === "hi" ? 5 : 4} fill={m.colour ? `#${m.colour}` : m.kind === "boat" ? "var(--ink)" : "var(--gold)"} stroke={m.kind === "lead" ? "var(--gold)" : "var(--ink)"} strokeWidth={m.kind === "lead" ? 2.2 : 1.2} />}
       {m.label && <text x={m.side === "l" ? x - 9 : x + 9} y={y + 4} textAnchor={m.side === "l" ? "end" : "start"} fontFamily={m.kind === "ghost" || m.kind === "mark" ? "var(--font-serif)" : "var(--font-sans)"} fontStyle={m.kind === "ghost" || m.kind === "mark" ? "italic" : "normal"} fontWeight={600} fontSize={11} fill={m.kind === "mark" ? "var(--magenta)" : m.kind === "ghost" ? "var(--graphite)" : "var(--ink)"}>{m.label}</text>}
     </g>; })}
     {ptr && next && (() => { const left = ptr.x < W / 2, low = ptr.y > H - 30; return <g>

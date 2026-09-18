@@ -8,9 +8,19 @@ export function Tri({ n }: { n: number | null }) {
   if (n != null && n < 0) return <span className="loss" style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><svg width="8" height="7"><path d="M0 0 L8 0 L4 7 Z" fill="currentColor" /></svg>{-n}</span>;
   return <span style={{ color: "var(--graphite)" }}>–</span>;
 }
+// The boat's own colour on YB's tracker, which is how a follower of the map already knows it: a small chip before the name. It
+// carries a hairline so that a pale one (Guido's yellow, Guy's cyan) is still a shape on paper. Two boats can share a colour —
+// Isa's and Andrea's are both FF0066 in YB's own data — so the chip is never the only thing that names a boat; the name and the
+// country beside it are. (18 Sep 2026: the owner had the country's flag here too and took it out — with the country already
+// written by the name, a chip and a flag together made the column too loud.)
+export function Swatch({ colour }: { colour: string | null }) {
+  if (!colour) return null;
+  return <span aria-hidden="true" style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: `#${colour}`, border: "1px solid rgba(26,26,26,0.45)", verticalAlign: "0px", marginRight: 5 }} />;
+}
+
 export function Who({ b, sub = true }: { b: BoatStat; sub?: boolean }) {
   return <div style={{ whiteSpace: "nowrap" }}>
-    <div className="mont" style={{ fontSize: 13, fontWeight: 600 }}><Link href={`/skipper/${b.team_id}`} className="who-link">{b.team.name}</Link> <span style={{ fontWeight: 500, color: "var(--graphite)", fontSize: 11 }}>{b.team.country_code}</span></div>
+    <div className="mont" style={{ fontSize: 13, fontWeight: 600 }}><Swatch colour={b.team.colour} /><Link href={`/skipper/${b.team_id}`} className="who-link">{b.team.name}</Link> <span style={{ fontWeight: 500, color: "var(--graphite)", fontSize: 11 }}>{b.team.country_code}</span></div>
     {sub && <div style={{ fontStyle: "italic", fontSize: 13, color: "var(--graphite)" }}>{b.team.model}</div>}
     {b.stale && <div className="mont loss" style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.6 }}>MISSED {hhmm(b.as_of)} REPORT · LAST FIX {hhmm(b.last_fix_at)} UTC</div>}
     {b.restart_at && <div className="mont" style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.6, color: "var(--graphite)" }}>RESTARTED {dayMon(b.restart_at).toUpperCase()} AFTER REPAIRS</div>}
