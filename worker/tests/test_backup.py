@@ -17,3 +17,11 @@ def test_upload_files_posts_each_file_with_upsert(tmp_path):
     s = FakeSession()
     assert backup.upload_files(files, url="https://x.supabase.co", key="k", session=s) == 2
     assert s.posts[0] == ("https://x.supabase.co/storage/v1/object/raw-snapshots/ggr2026/leaderboard.20260916T0012.gz", "true")
+
+def test_a_past_races_files_go_into_that_races_own_folder(tmp_path):
+    """The import of 2018 must not write beside — or over — the live race's snapshots: the folder is the race it belongs to."""
+    f = tmp_path / "RaceSetup.20180701T1000.gz"
+    f.write_bytes(b"x")
+    s = FakeSession()
+    assert backup.upload_files([f], url="https://x.supabase.co", key="k", session=s, race="ggr2018") == 1
+    assert s.posts[0][0] == "https://x.supabase.co/storage/v1/object/raw-snapshots/ggr2018/RaceSetup.20180701T1000.gz"

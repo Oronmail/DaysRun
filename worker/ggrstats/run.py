@@ -1,10 +1,10 @@
 # worker/ggrstats/run.py
 """CLI. Every command is idempotent; `all` is what the timers run."""
-import argparse, gzip, json, logging, sys, time
+import argparse, gzip, json, logging, pathlib, sys, time
 from datetime import datetime, timezone
 import requests
-from . import backfill, backup, config, db, decode, events, monitoring, perf, stats, weather, yb
-from .grid import SLOT_S
+from . import backfill, backup, config, course, db, decode, editions, editions_data, events, monitoring, perf, stats, weather, yb
+from .grid import SLOT_S, slot_time
 
 log = logging.getLogger("ggrstats")
 
@@ -143,15 +143,203 @@ def cmd_verify(conn, race, as_of, golden_path):
     print("mismatches:", bad)
     return bad
 
+# ---------------------------------------------------------------- the Past races page: its own tables, and nothing else
+
+IMPORT_ENDPOINTS = ("RaceSetup", "zegments", "AllPositions3")    # an import reads no leaderboard, and YB served 2018's as a 503
+WIND_WAIT_S = (60, 300)                                          # the archive refused once, twice: wait, ask again, then stop and resume later
+
+def _setup_2026(conn):
+    """The 2026 RaceSetup: the course line every fleet of the page is measured on, past or present."""
+    row = conn.execute("select raw_setup from race where key=%s", ("ggr2026",)).fetchone()
+    if not row:
+        raise RuntimeError("the 2026 race row is missing: every fleet is measured on the 2026 course line, so capture this year's race first")
+    return row[0]
+
+def _measure(conn, race):
+    """(line, the course's length in nm, each mark's distance to finish, put the fixes on the line?) for one fleet. A past fleet
+    is measured on the 2026 line and so reads the LINE's own figure at each mark; this year's fleet keeps YB's own distances and
+    so YB's observed figure (editions.compute's docstring — mixing the two scales hid a rounding Guy deBoer had made)."""
+    setup = _setup_2026(conn)
+    nodes = setup["course"]["nodes"]
+    line = course.Line(nodes)
+    if race == config.RACE_KEY:
+        return line, setup["course"]["distance"] / 1.852, course.mark_togo(nodes, config.MARKS), False
+    return line, line.total_nm, course.mark_togo(nodes, config.MARKS, observed={}), True
+
+def cmd_import_edition(conn, race, from_dir=None):
+    """A past race into the database, once: RaceSetup, the split times and every fix from YB's own endpoints, or from a folder
+    holding the same three files (--from-dir, for the day YB's archive goes away again). The curated rows of editions_data are
+    written over YB's team strings, and only the boats that started take a row or a fix. Inserts only, so a second run writes
+    nothing twice. Returns the number of NEW fixes."""
+    if from_dir:
+        d = pathlib.Path(from_dir)
+        setup, zeg = json.loads((d / "RaceSetup").read_text()), json.loads((d / "zegments").read_text())
+        teams = json.loads((d / "AllPositions3.json").read_text()) if (d / "AllPositions3.json").exists() else decode.decode((d / "AllPositions3").read_bytes())
+        paths = []
+    else:
+        snap = yb.snapshot(race, config.SNAPDIR, names=IMPORT_ENDPOINTS)     # keeps a timestamped copy on disk, as the live capture does
+        setup, zeg = json.loads(snap["RaceSetup"][0]), json.loads(snap["zegments"][0])
+        teams = decode.decode(snap["AllPositions3"][0])
+        paths = [p for _, p in snap.values()]
+    ed, fleet = editions_data.EDITIONS[race], editions_data.TEAMS[race]
+    keep = {r["id"] for r in fleet} - ed["skip"]                             # the replays, and a sailor who never crossed the line
+    db.upsert_race(conn, race, setup, start_at=ed["start"])                  # the raw setup exactly as received; the start is the curated one
+    db.upsert_past_teams(conn, race, [dict(r, start_at=ed["start"]) for r in fleet])
+    n = db.insert_fixes(conn, race, [t for t in teams if t["id"] in keep])
+    db.upsert_splits(conn, race, zeg)
+    conn.commit()
+    if paths:
+        try:
+            log.info("backup: %d raw files uploaded", backup.upload_files(paths, race=race))
+        except Exception as e:                                               # a backup failure must not undo an import
+            log.warning("backup failed: %s", e)
+            monitoring.warn("the raw-snapshot backup failed", reason=type(e).__name__)
+    log.info("import %s: %d boats, %d new fixes", race, len(fleet), n)
+    return n
+
+def cmd_editions(conn, race, as_of, since=None, fixes=None):
+    """The three tables of the Past races page for one race. A past race: every day from the gun to the race day of its last
+    documented end. This year: the 00:00 report of the day of `as_of` (default the latest slot) — never a day derive has not
+    published — or every day since `since`, and by default also the day after the last one stored, so a skipped day heals itself.
+    fixes: the track the caller has already read (`all` passes its own). It touches nothing else: no snapshot, no event, no
+    weather call, no re-derive."""
+    start = editions_data.EDITIONS[race]["start"]
+    line, course_nm, togo, on_the_line = _measure(conn, race)
+    fixes = fixes if fixes is not None else db.load_fixes(conn, race)
+    ends = db.team_ends(conn, race)                                          # ghosts are not in it; a past race's rows are the curated ones
+    if race == config.RACE_KEY:
+        winds, now = db.load_winds(conn, race), as_of if as_of else latest_slot()
+        last = editions.race_day_of(now - 1, start)                          # the last 00:00 report before this slot
+        if now % 86400 == 0 and conn.execute("select 1 from fleet_stat where race_key=%s and as_of=%s", (race, db.ts(now))).fetchone():
+            last = editions.race_day_of(now, start)                          # this slot IS a 00:00 report and derive has published it
+        stored = conn.execute("select max(race_day) from edition_day where race_key=%s", (race,)).fetchone()[0]
+        first = editions.race_day_of(since, start) if since else min(last, (last - 1 if stored is None else stored) + 1)
+        days = list(range(max(1, first), last + 1))
+        until = editions.day_zero(start) + days[-1] * 86400 if days else None    # nothing later than the page's own clock
+    else:
+        winds, until = db.load_edition_wind(conn, race), None
+        end = max((e["ended_at"] for e in ends.values() if e["ended_at"]), default=None)
+        days = list(range(1, editions.race_day_of(end, start) + 1)) if end else []
+    if not days:
+        log.info("editions %s: no race day to write yet", race)
+        return {"days": [], "boat_days": [], "milestones": [], "notes": {}}
+    out = editions.compute({tid: fx for tid, fx in fixes.items() if tid in ends}, ends, start, line, course_nm, days, winds,
+                           on_the_line, togo_marks=togo, until=until)
+    db.replace_edition_days(conn, race, out["days"])
+    db.replace_edition_boat_days(conn, race, out["boat_days"])
+    db.replace_edition_milestones(conn, race, out["milestones"])             # the whole race's table is the unit of replacement
+    conn.commit()
+    log.info("editions %s: race days %d to %d, %d boat-days, %d milestones, %s", race, days[0], days[-1], len(out["boat_days"]),
+             len(out["milestones"]), out["notes"])
+    return out
+
+def _utc(t):
+    return "no fix" if t is None else f"{datetime.fromtimestamp(int(t), timezone.utc):%Y-%m-%d %H:%M}"
+
+def _nm(v):
+    return "blank" if v is None else f"{v:.2f} nm"
+
+def cmd_editions_check(conn, race=None):
+    """The standing cross-check the design asks for: every stored day of THIS year's race, boat by boat, against the figures the
+    live pages show. Two readings, and each can differ for a reason the line makes visible.
+    Distance to finish, 0.6 nm: boat_stat takes the latest fix up to 20 minutes AFTER the report (stats.at_or_before), these rows
+    the fix NEAREST it (grid.resample), and a fast tracker gives both — so both fix times are printed.
+    The day's run, 0.05 nm, and only where all six legs of that report have a distance: a run boat_stat shows across a missing
+    report is bridged, which these rows refuse by design; a run left out as impossible is not compared at all.
+    Prints one line per mismatch and their number, and returns it."""
+    race, bad = race or config.RACE_KEY, 0
+    for day, as_of in conn.execute("select race_day, as_of from edition_day where race_key=%s order by race_day", (race,)).fetchall():
+        T = int(as_of.timestamp())
+        live = {tid: rest for tid, *rest in conn.execute("""select team_id, dtf_nm, run24_nm, extract(epoch from last_fix_at)::bigint
+                                                            from boat_stat where race_key=%s and as_of=%s""", (race, as_of))}
+        if not live:
+            print(f"day {day:>3}  {_utc(T)}  no derived report: nothing to read these rows against")
+            bad += 1
+            continue
+        whole = {tid for tid, n in conn.execute("""select team_id, count(dist_nm) from leg where race_key=%s and end_slot > %s
+                                                   and end_slot <= %s group by team_id""", (race, db.ts(T - 86400), as_of)) if n == 6}
+        for tid, name, togo, run24, fix_at in conn.execute(
+                """select b.team_id, coalesce(t.first_name, t.name), b.togo_nm, b.run24_nm, extract(epoch from b.fix_at)::bigint
+                   from edition_boat_day b join team t on t.race_key = b.race_key and t.id = b.team_id
+                   where b.race_key=%s and b.race_day=%s and b.fresh order by b.team_id""", (race, day)):
+            dtf, run, last_fix = live.get(tid, (None, None, None))
+            if togo is not None and (dtf is None or abs(togo - dtf) > 0.6):
+                bad += 1
+                print(f"day {day:>3}  {name:<9} distance to finish {togo:.2f} nm, boat_stat {_nm(dtf)}   fix {_utc(fix_at)} against {_utc(last_fix)}")
+            if run24 is not None and tid in whole and (run is None or abs(run24 - run) > 0.05):
+                bad += 1
+                print(f"day {day:>3}  {name:<9} day's run {run24:.2f} nm, boat_stat {_nm(run)}")
+    print("mismatches:", bad)
+    return bad
+
+def cmd_import_edition_wind(conn, race, pace_s=2.0, until_day=None, batch=20, max_failures=3, session=None, sleep=None):
+    """Model wind at the end of every 4-hour leg of a past race, from Open-Meteo's archive: at exactly the slots the page's own
+    figures are built on (editions.past_slots), and only at a slot that ENDS a leg — a slot with no predecessor ends none, and
+    asking for it would spend an allowance that is counted per location per day. `until_day` stops at that race day, so the owner
+    can take the race a few days at a time. One batch at a time, each stored and committed before the next is asked for, because
+    one archive call is all-or-nothing (weather.fetch_archive_wind); `pace_s` between calls. The archive's own wall (429, 5xx, a
+    body that is not JSON) is waited out and the SAME batch asked again; after max_failures in a row the run stops cleanly and
+    says what is left — it inserts only, so the next run asks for exactly what is still missing. Any other error is a programming
+    error and comes straight out. Returns the points stored in this run; `editions` afterwards puts the wind into edition_day."""
+    sleep = sleep or time.sleep
+    start = editions_data.EDITIONS[race]["start"]
+    line = _measure(conn, race)[0]
+    fixes, ends, points = db.load_fixes(conn, race), db.team_ends(conn, race), {}
+    for tid, fx in fixes.items():
+        if tid not in ends:
+            continue
+        slots = editions.past_slots(fx, start, ends[tid]["ended_at"], line)
+        for k, f in slots.items():
+            t = slot_time(k)
+            if k - 1 in slots and (until_day is None or editions.race_day_of(t, start) <= until_day):
+                points[(tid, t)] = {"team_id": tid, "slot_at": t, "lat": f["lat"], "lon": f["lon"]}
+    asked = {}
+    for tid, t in points:
+        asked.setdefault(tid, []).append(t)
+    missing = db.missing_edition_wind_slots(conn, race, asked)
+    by_day = {}
+    for tid, t in missing:
+        by_day.setdefault(datetime.fromtimestamp(t, timezone.utc).date(), []).append(points[(tid, t)])
+    session = session or requests.Session()
+    stored, fails, walled = 0, 0, False
+    for day in sorted(by_day):
+        group, i = sorted(by_day[day], key=lambda p: (p["slot_at"], p["team_id"])), 0
+        while i < len(group):
+            try:
+                rows = weather.fetch_archive_wind(group[i:i + batch], session=session, batch=batch)
+            except weather.RetryableWeatherError as e:
+                fails += 1
+                log.warning("edition wind %s: %s (refusal %d of %d)", day, e, fails, max_failures)
+                walled = fails >= max_failures
+                if walled:
+                    break
+                sleep(WIND_WAIT_S[min(fails, len(WIND_WAIT_S)) - 1])
+                continue                                                     # the same batch again: nothing of it was stored
+            db.insert_edition_wind(conn, race, rows)
+            conn.commit()
+            stored, fails, i = stored + len(rows), 0, i + batch
+            sleep(pace_s)
+        if walled:
+            break
+    left = len(missing) - stored
+    log.info("edition wind %s: %d points stored, %d still missing%s", race, stored, left, " (the archive walled this run)" if walled else "")
+    print(f"points stored: {stored}, still missing: {left}")
+    return stored
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ggrstats")
-    ap.add_argument("command", choices=["capture", "derive", "weather", "revalidate", "all", "backfill", "verify", "alarm-test"])
+    ap.add_argument("command", choices=["capture", "derive", "weather", "revalidate", "all", "backfill", "verify", "alarm-test",
+                                        "import-edition", "import-edition-wind", "editions"])
     ap.add_argument("--as-of", help="ISO UTC time; default = the latest 4-hour slot")
     ap.add_argument("--race", default=config.RACE_KEY)
     ap.add_argument("--master", help="backfill: path to AllPositions3.master.json.gz")
     ap.add_argument("--snapshots", help="backfill: directory of <endpoint>.<stamp>.gz files")
     ap.add_argument("--since", help="backfill/derive: derive every slot from this ISO time; weather: fill every missing (boat, fix) pair from this ISO time, paced")
     ap.add_argument("--golden", default="tests/fixtures/golden.snap.json")
+    ap.add_argument("--from-dir", help="import-edition: a folder holding RaceSetup, zegments and AllPositions3 (YB's binary) or AllPositions3.json")
+    ap.add_argument("--until-day", type=int, help="import-edition-wind: go no further than this race day (the archive's free allowance is counted per location per day)")
+    ap.add_argument("--pace", type=float, default=2.0, help="import-edition-wind: seconds between archive calls")
+    ap.add_argument("--check", action="store_true", help="editions: read this year's stored rows against the live pages' own figures")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     as_of = parse_iso(a.as_of) if a.as_of else latest_slot()
@@ -190,6 +378,10 @@ def main(argv=None):
                     cmd_weather_sweep(conn, a.race, since=as_of - 3 * 86400, until=as_of, limit=48)
                 except Exception as e:
                     conn.rollback(); log.warning("weather sweep failed: %s", e); monitoring.warn("the weather sweep failed", reason=type(e).__name__)
+                try:                                          # the Past races page's rows for this year: its own tables, nothing else
+                    cmd_editions(conn, a.race, as_of, fixes=fixes)
+                except Exception as e:
+                    conn.rollback(); log.warning("editions failed: %s", e); monitoring.warn("the editions rows failed", reason=type(e).__name__)
                 cmd_revalidate()
         elif a.command == "backfill":
             setup_path = sorted(__import__("pathlib").Path(a.snapshots).glob("RaceSetup.*.gz"))[-1]
@@ -203,6 +395,14 @@ def main(argv=None):
                     time.sleep(4)                    # 2 calls x 16 boats per slot: stay under Open-Meteo's 600 weighted calls a minute
         elif a.command == "verify":
             return cmd_verify(conn, a.race, as_of, a.golden)
+        elif a.command == "import-edition":
+            print(cmd_import_edition(conn, a.race, from_dir=a.from_dir))
+        elif a.command == "import-edition-wind":
+            cmd_import_edition_wind(conn, a.race, pace_s=a.pace, until_day=a.until_day)
+        elif a.command == "editions":
+            if a.check:
+                return cmd_editions_check(conn, a.race)
+            cmd_editions(conn, a.race, as_of, parse_iso(a.since) if a.since else None)
     finally:
         conn.close()
 

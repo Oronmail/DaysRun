@@ -12,15 +12,18 @@ def _headers(key, content_type=None):
         h["Content-Type"] = content_type
     return h
 
-def upload_files(paths, url=None, key=None, session=None):
-    """Upload the given local gzip files as <race>/<filename>; existing objects are overwritten. Returns the count."""
+def upload_files(paths, url=None, key=None, session=None, race=None):
+    """Upload the given local gzip files as <race>/<filename>; existing objects are overwritten. Returns the count.
+    race: the folder to write into, for the files of a past race; the live capture leaves it out and keeps config.RACE_KEY,
+    so an import of 2018 can never land beside — or with x-upsert over — this year's snapshots."""
     url = url or os.environ["SUPABASE_URL"]
     key = key or os.environ["SUPABASE_SERVICE_KEY"]
     session = session or requests.Session()
+    folder = race or config.RACE_KEY
     n = 0
     for p in map(pathlib.Path, paths):
         with open(p, "rb") as fh:
-            r = session.post(f"{url}/storage/v1/object/{BUCKET}/{config.RACE_KEY}/{p.name}", data=fh,
+            r = session.post(f"{url}/storage/v1/object/{BUCKET}/{folder}/{p.name}", data=fh,
                              headers=_headers(key, "application/gzip"), timeout=120)
         r.raise_for_status()
         n += 1
