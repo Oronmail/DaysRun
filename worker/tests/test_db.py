@@ -14,7 +14,7 @@ def conn():
     c = db.connect(URL)
     for m in sorted((pathlib.Path(__file__).parents[2] / "db/migrations").glob("*.sql")):     # every migration, in order
         c.execute(m.read_text())
-    c.execute("truncate duel, boat_perf, race, team, fix, leaderboard_snap, split, restart, leg, boat_stat, fleet_stat, record_board, sprint_result, conditions, event cascade")
+    c.execute("truncate edition_wind, edition_milestone, edition_boat_day, edition_day, duel, boat_perf, race, team, fix, leaderboard_snap, split, restart, leg, boat_stat, fleet_stat, record_board, sprint_result, conditions, event cascade")
     c.commit()
     yield c
     c.close()
@@ -119,3 +119,35 @@ def test_a_zegments_tag_without_teams_is_skipped(conn):
     db.upsert_splits(conn, "ggr2026", zeg)
     conn.commit()
     assert conn.execute("select count(*) from split where race_key='ggr2026'").fetchone()[0] == before
+def test_past_teams_and_edition_tables_roundtrip(conn):
+    from ggrstats import db
+    setup = {"title": "Golden Globe Race 2018", "course": {"distance": 46484.9, "nodes": []},
+             "tags": [], "teams": [{"id": 8, "name": "Jean-Luc Van Den Heede", "start": 1530439200}]}
+    from ggrstats import config
+    assert config.race_start(setup) == 1530439200            # 2018's RaceSetup has no start on its tags: the earliest boat's
+    db.upsert_race(conn, "ggr2018", setup)
+    db.upsert_past_teams(conn, "ggr2018", [{"id": 8, "name": "Jean-Luc Van Den Heede", "first_name": None, "model": "Rustler 36", "yacht": "Matmut",
+        "design_class": "Rustler 36", "status": "finished", "start_at": 1530439200, "ended_at": 1548753120, "ended_how": "finished",
+        "ended_where": "Les Sables-d’Olonne", "class_note": None, "source": "https://goldengloberace.com/"}])
+    db.replace_edition_boat_days(conn, "ggr2018", [{"team_id": 8, "race_day": 12, "as_of": 1531440000, "racing": True, "finished": False, "fresh": True,
+        "fix_at": 1531440001, "lat": 27.9, "lon": -14.7, "togo_nm": 24380.0, "mg_nm": 1374.5, "sailed_nm": 1470.0, "run24_nm": 153.0,
+        "best24_nm": 163.0, "best24_at": 1531440000, "place": 2}])
+    db.replace_edition_days(conn, "ggr2018", [{"race_day": 12, "as_of": 1531440000, "racing": 16, "finished": 0, "fresh": 16, "leader_team_id": 85,
+        "leader_mg_nm": 1388.0, "median_mg_nm": 1210.0, "last_mg_nm": 1014.0, "best_run_nm": 163.0, "best_run_team_id": 85,
+        "best_sofar_nm": 172.0, "best_sofar_team_id": 85, "best_sofar_at": 1530600000, "mean_run_nm": 137.0, "runs_n": 15,
+        "wind_kt": 10.9, "wind_legs": 90, "legs_upwind": 22, "legs_reaching": 16, "legs_running": 52, "straight_pct": 105.0}])
+    db.replace_edition_milestones(conn, "ggr2018", [{"team_id": 8, "milestone": "Cape Horn", "passed_at": 1543005600, "race_day": 145}])
+    conn.commit()
+    ends = db.team_ends(conn, "ggr2018")
+    assert ends[8] == {"ended_at": 1548753120, "ended_how": "finished"}
+    assert conn.execute("select mg_nm from edition_boat_day where race_key='ggr2018' and team_id=8 and race_day=12").fetchone()[0] == 1374.5
+    assert conn.execute("select round(best24_nm), extract(epoch from best24_at)::bigint from edition_boat_day where race_key='ggr2018' and team_id=8 and race_day=12").fetchone() == (163, 1531440000)
+    assert conn.execute("select median_mg_nm from edition_day where race_key='ggr2018' and race_day=12").fetchone()[0] == 1210.0
+    assert conn.execute("select best_sofar_team_id, extract(epoch from best_sofar_at)::bigint from edition_day where race_key='ggr2018' and race_day=12").fetchone() == (85, 1530600000)
+    assert conn.execute("select race_day from edition_milestone where race_key='ggr2018' and team_id=8").fetchone()[0] == 145
+    db.replace_edition_days(conn, "ggr2018", [{"race_day": 12, "as_of": 1531440000, "racing": 16, "finished": 0, "fresh": 15, "leader_team_id": 85,
+        "leader_mg_nm": 1388.0, "median_mg_nm": 1211.0, "last_mg_nm": 1014.0, "best_run_nm": 163.0, "best_run_team_id": 85, "mean_run_nm": 137.0, "runs_n": 15,
+        "wind_kt": None, "wind_legs": 0, "legs_upwind": 0, "legs_reaching": 0, "legs_running": 0, "straight_pct": None}])
+    conn.commit()
+    assert conn.execute("select count(*), max(median_mg_nm) from edition_day where race_key='ggr2018'").fetchone() == (1, 1211.0)   # replaced, not duplicated
+    assert conn.execute("select best_sofar_nm from edition_day where race_key='ggr2018' and race_day=12").fetchone()[0] is None     # this call omitted it: NULL, not stale
