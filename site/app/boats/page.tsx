@@ -4,6 +4,8 @@ import Dateline from "@/components/Dateline";
 import { latestFleet, boatStats, boatPerf } from "@/lib/db";
 import { kn, nm } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
+import Tips, { type Target } from "@/components/Tips";
+import { designTip } from "@/lib/tips";
 export const revalidate = 900;
 export const metadata = pageMeta("/boats");
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2; };
@@ -16,8 +18,9 @@ export default async function Page() {
   const groups = new Map<string, typeof boats>(); for (const b of boats) groups.set(b.team.design_class ?? "Not listed", [...(groups.get(b.team.design_class ?? "Not listed") ?? []), b]);
   const ordered = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
   const W = 800, L = 190, pw = W - L - 40, lo = 3, hi = 6.5, X = (v: number) => L + (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo) * pw;
-  let y = 10; const rows: React.ReactNode[] = [];
+  let y = 10; const rows: React.ReactNode[] = [], targets: Target[] = [];
   for (const [g, bs] of ordered) { const rh = bs.length > 1 ? 40 : 26; const cy = y + rh / 2;
+    for (const b of bs) targets.push({ x: X(b.spd7 ?? 0) - 9, y: cy - 9, w: 18, h: 18, point: true, dot: { x: X(b.spd7 ?? 0), y: cy }, tip: designTip(b.team.first_name ?? b.team.name, b.team.model, b.spd7, b.rank) });
     rows.push(<g key={g}><line x1={L} y1={cy} x2={L + pw} y2={cy} stroke="var(--hair)" /><text x={0} y={cy + 4} fontFamily="var(--font-sans)" fontWeight={700} fontSize={12} letterSpacing={1} fill="var(--ink)">{g.toUpperCase()}</text>
       {bs.sort((a, b) => (a.spd7 ?? 0) - (b.spd7 ?? 0)).map((b, i) => <g key={b.team_id}><circle cx={X(b.spd7 ?? 0)} cy={cy} r={6} fill={b.rank === 1 ? "var(--gold)" : "var(--series-1)"} stroke="var(--panel)" strokeWidth={2} /><text x={X(b.spd7 ?? 0)} y={i % 2 ? cy + 19 : cy - 11} textAnchor="middle" fontFamily="var(--font-sans)" fontWeight={600} fontSize={11} fill="var(--ink)">{b.team.first_name}</text></g>)}</g>);
     y += rh + 14; }
@@ -26,7 +29,7 @@ export default async function Page() {
     <div style={{ maxWidth: 860, fontSize: 19, lineHeight: 1.5 }}>Which design is quickest? {multi.map(([g, bs]) => `${bs.length} ${g}s`).join(", ")} make the like-for-like comparison of this race. Everything else is one of a kind.</div>
     <div className="stack" style={{ display: "grid", gridTemplateColumns: "840px minmax(0,1fr)", gap: 40 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Average speed, last 7 days</div><div className="small" style={{ fontStyle: "italic" }}>all 4-hour legs, by design · gold = the leader</div></div>
-        <div className="panel"><svg width={W} height={y + 14} viewBox={`0 0 ${W} ${y + 14}`} style={{ display: "block" }}>{[3, 4, 5, 6].map(v => <g key={v}><line x1={X(v)} y1={0} x2={X(v)} y2={y - 6} stroke="var(--hair)" /><text x={X(v)} y={y + 8} textAnchor="middle" fontFamily="var(--font-mono)" fontSize={10} fill="var(--graphite)">{v} kt</text></g>)}{rows}</svg></div></div>
+        <div className="panel"><Tips width={W} height={y + 14} targets={targets}><svg width={W} height={y + 14} viewBox={`0 0 ${W} ${y + 14}`} style={{ display: "block" }}>{[3, 4, 5, 6].map(v => <g key={v}><line x1={X(v)} y1={0} x2={X(v)} y2={y - 6} stroke="var(--hair)" /><text x={X(v)} y={y + 8} textAnchor="middle" fontFamily="var(--font-mono)" fontSize={10} fill="var(--graphite)">{v} kt</text></g>)}{rows}</svg></Tips></div></div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}><div className="rule-title"><div className="label">Read with care</div></div>
         <div style={{ fontSize: 15, lineHeight: 1.55 }}>Boats a few hundred miles apart sail different winds; a week’s average smooths some of that out, not all of it.</div>
         {boats.filter(b => b.restart_at).map(b => <div key={b.team_id} style={{ fontSize: 15, lineHeight: 1.55 }}>{b.team.first_name}’s {b.team.design_class} restarted after repairs; its figures count only from the restart, so they cover fewer days than the rest.</div>)}

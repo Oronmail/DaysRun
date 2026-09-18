@@ -1,11 +1,13 @@
 // site/components/FleetMap.tsx — server-rendered SVG chart in the Admiralty-paper style
 import { project, viewHeight, landPaths, courseD, type View } from "@/lib/geo";
 import { marksInView, markNamed, edgePointer } from "@/lib/marks";
+import Tips, { type Target } from "./Tips";
+import type { Tip } from "@/lib/tips";
 // name + href: the boat's name shows when the pointer is over its dot, and the dot opens the skipper's page (CSS only: .map-boat).
-export type Marker = { lat: number; lon: number; label?: string; side?: "l" | "r"; kind: "boat" | "lead" | "ghost" | "mark" | "dim" | "hi"; name?: string; href?: string };
+export type Marker = { lat: number; lon: number; label?: string; side?: "l" | "r"; kind: "boat" | "lead" | "ghost" | "mark" | "dim" | "hi"; name?: string; href?: string; tip?: Tip };   // tip: the box shown when the pointer is on the boat (it then replaces the bare name)
 // next: the next mark of the boat the chart is about (the leader on the Fleet page). On the chart it is drawn with the other marks
 // in view; beyond the chart, an arrow on the edge points at it from that boat and says how far it is.
-export default function FleetMap({ view, course, markers, track, note, next }: { view: View; course: { lat: number; lon: number }[]; markers: Marker[]; track?: { lat: number; lon: number }[]; note?: { lat: number; lon: number; lines: string[] }; next?: { name: string; from: { lat: number; lon: number }; text: string } }) {
+export default function FleetMap({ view, course, markers, track, note, next, open = "left" }: { open?: "left" | "right"; view: View; course: { lat: number; lon: number }[]; markers: Marker[]; track?: { lat: number; lon: number }[]; note?: { lat: number; lon: number; lines: string[] }; next?: { name: string; from: { lat: number; lon: number }; text: string } }) {
   const H = viewHeight(view), W = view.width;
   const grid: React.ReactNode[] = [];
   for (let lo = Math.ceil(view.lon0 / 5) * 5; lo <= view.lon1; lo += 5) { const [x] = project(view.lat0, lo, view); grid.push(<g key={`lo${lo}`}><line x1={x} y1={0} x2={x} y2={H} stroke="var(--hair)" strokeWidth={0.6} /><text x={x + 34 < W ? x + 3 : x - 3} y={H - 5} textAnchor={x + 34 < W ? "start" : "end"} fontFamily="var(--font-mono)" fontSize={9} fill="var(--graphite)">{Math.abs(lo)}°{lo < 0 ? "W" : "E"}</text></g>); }
@@ -13,7 +15,8 @@ export default function FleetMap({ view, course, markers, track, note, next }: {
   const all: Marker[] = [...markers, ...marksInView(view).map(m => ({ lat: m.lat, lon: m.lon, kind: "mark" as const, label: m.name }))];
   const target = next ? markNamed(next.name) : null;
   const ptr = next && target ? edgePointer(project(next.from.lat, next.from.lon, view), project(target.lat, target.lon, view), W, H, 16) : null;
-  return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: "block", background: "var(--panel)" }} role="img" aria-label="Fleet positions">
+  const targets: Target[] = markers.filter(m => m.tip).map(m => { const [x, y] = project(m.lat, m.lon, view); return { x: x - 9, y: y - 9, w: 18, h: 18, point: true, dot: { x, y }, href: m.href, label: m.name, tip: m.tip! }; });
+  return <Tips width={W} height={H} targets={targets} fixed open={open}><svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: "block", background: "var(--panel)" }} role="img" aria-label="Fleet positions">
     {grid}
     {landPaths(view).map((d, i) => <path key={i} d={d} fill="var(--land)" stroke="var(--coast)" strokeWidth={0.7} />)}
     <path d={courseD(course, view)} fill="none" stroke="var(--graphite)" strokeWidth={1} strokeDasharray="5 4" opacity={0.7} />
@@ -30,8 +33,8 @@ export default function FleetMap({ view, course, markers, track, note, next }: {
       <text x={left ? ptr.x + 10 : ptr.x - 10} y={low ? ptr.y - 8 : ptr.y + 4} textAnchor={left ? "start" : "end"} fontFamily="var(--font-serif)" fontStyle="italic" fontWeight={600} fontSize={11} fill="var(--magenta)" className="map-halo">{next.text}</text></g>; })()}
     {note && (() => { const [x, y] = project(note.lat, note.lon, view); return note.lines.map((l, i) => <text key={i} x={x} y={y + i * 17} fontFamily="var(--font-marker)" fontSize={14} fill="var(--pencil)">{l}</text>); })()}
     {/* Drawn last, above every dot: an unseen disc over each boat that shows the boat's name while the pointer is on it. */}
-    {markers.filter(m => m.name).map((m, i) => { const [x, y] = project(m.lat, m.lon, view), left = x > W - 96;
+    {markers.filter(m => m.name && !m.tip).map((m, i) => { const [x, y] = project(m.lat, m.lon, view), left = x > W - 96;
       const hit = <g className="map-boat"><circle cx={x} cy={y} r={9} fill="transparent" /><text className="map-name map-halo" x={left ? x - 9 : x + 9} y={y - 7} textAnchor={left ? "end" : "start"} fontFamily="var(--font-sans)" fontWeight={700} fontSize={11.5} fill="var(--ink)">{m.name}</text></g>;
       return m.href ? <a key={`n${i}`} href={m.href} aria-label={m.name}>{hit}</a> : <g key={`n${i}`}>{hit}</g>; })}
-  </svg>;
+  </svg></Tips>;
 }

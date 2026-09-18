@@ -5,6 +5,7 @@ import Shell from "@/components/Shell";
 import Dateline from "@/components/Dateline";
 import Tiles from "@/components/Tiles";
 import RankingTable from "@/components/RankingTable";
+import { boatTip } from "@/lib/tips";
 import RankingList from "@/components/RankingList";
 import { BARS_LEGEND } from "@/components/SpeedBars";
 import FleetMap, { type Marker } from "@/components/FleetMap";
@@ -26,7 +27,7 @@ export default async function FleetPage({ window = "24h" }: { window?: Win }) {
   const bestRun = boats.find(b => b.team_id === fleet.best_run24_team_id);
   const view = fleetView(boats, 358);
   // No names on the chart: the pointer shows a boat's name, and four permanent labels out of sixteen said little (owner, 17 Sep).
-  const markers: Marker[] = boats.map(b => ({ lat: b.lat, lon: b.lon, kind: b.rank === 1 ? "lead" : "boat", name: b.team.first_name ?? b.team.name, href: `/skipper/${b.team_id}` }));
+  const markers: Marker[] = boats.map(b => ({ lat: b.lat, lon: b.lon, kind: b.rank === 1 ? "lead" : "boat", name: b.team.first_name ?? b.team.name, href: `/skipper/${b.team_id}`, tip: boatTip(b) }));
   return <Shell active="Fleet" dateline={<Dateline asOf={fleet.as_of} raceDay={fleet.race_day} />} title="FLEET POSITIONS" note={`${lead.team.first_name} ${nm(lead.next_mark_nm)} nm from ${lead.next_mark}`}>
     <Tiles items={[
       { k: "Leader", v: lead.team.name, s: `${lead.team.model} · ${nm(lead.dtf_nm)} nm to go` },
@@ -44,7 +45,7 @@ export default async function FleetPage({ window = "24h" }: { window?: Win }) {
       <aside style={{ display: "flex", flexDirection: "column", gap: 28 }}>
         <div className="ord-first" style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">The fleet at {hhmm(fleet.as_of)} UTC</div></div>
           <div style={{ border: "1px solid var(--ink)", padding: 6, background: "var(--panel)" }}><FleetMap view={view} course={setup.raw_setup.course.nodes} markers={markers} next={{ name: lead.next_mark, from: lead, text: `${lead.next_mark} ${nm(lead.next_mark_nm)} nm` }} /></div>
-          <div className="small" style={{ fontSize: 12 }}>Point at a boat for the skipper’s name. Positions here are the 4-hourly reports. To follow the boats live: <a href={TRACKER_URL} target="_blank" rel="noopener noreferrer">the official GGR tracker ↗</a></div></div>
+          <div className="small" style={{ fontSize: 12 }}>Point at a boat for the skipper’s name, place, miles to go and latest leg; select it for the skipper’s page. Positions here are the 4-hourly reports. To follow the boats live: <a href={TRACKER_URL} target="_blank" rel="noopener noreferrer">the official GGR tracker ↗</a></div></div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><div className="rule-title"><div className="label">Next mark</div></div>
           <div className="small">Estimated arrival, UTC: distance to the mark ÷ made-good speed over the last 7 days.</div>
           {boats.slice(0, 5).map(b => <div key={b.team_id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 12, padding: "7px 0", borderBottom: "1px solid var(--hair)" }}><span className="mont" style={{ fontSize: 13, fontWeight: 600 }}>{b.team.name}{b.stale && <span className="loss" style={{ display: "block", fontSize: 10, letterSpacing: 0.6 }}>FROM THE {hhmm(b.last_fix_at)} UTC FIX</span>}</span><span className="num small" style={{ fontSize: 12 }}><span style={{ fontFamily: "var(--font-serif)", fontStyle: "italic" }}>{b.next_mark}</span> {nm(b.next_mark_nm)} nm</span><span className="num" style={{ fontSize: 13, ...(b.stale ? { color: "var(--graphite)", fontStyle: "italic" } : {}) }}>{dayMonTime(b.next_mark_eta)}</span></div>)}

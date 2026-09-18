@@ -86,3 +86,18 @@ main svg[viewBox] { max-width: 100%; height: auto; }
 @media (max-width: 1699px) { .wide-only { display: none; } .wide-only-inline { display: none; } .narrow-only { display: block; }
   .table-scroll table.data th, .table-scroll table.data td { padding-left: 5px; padding-right: 5px; } }   /* a pixel a side: at 1,440 px the ranking was 4 px too wide */
 @media (max-width: 1439px) { .table-scroll { overflow-x: auto; max-width: 100%; } }
+
+/* Hover (and tap) boxes over server-drawn charts: no script. A target (.pt) is an HTML element placed in % over the SVG inside
+   .tipwrap; its box (.tipbox) shows on :hover and :focus. One look for every chart on the site. */
+.tipwrap { position: relative; } .panel > .tipwrap > svg[viewBox] { width: 100%; height: auto; }
+.pt { position: absolute; outline: none; text-decoration: none; color: inherit; }   /* a target may be a link (a boat on the fleet chart opens her page) */ .pt:hover, .pt:focus { z-index: 20; }
+.pt.bar:hover, .pt.bar:focus { background: rgba(27, 31, 36, 0.06); }
+.pt:not(.bar) { cursor: default; }                       /* the whole column answers, not only the bar's top */
+.tipdot { position: absolute; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border: 2px solid var(--ink); border-radius: 50%; display: none; } .pt:hover .tipdot, .pt:focus .tipdot { display: block; }
+.tipbox { display: none; position: absolute; left: calc(100% + 6px); top: -10px; background: var(--panel); border: 1px solid var(--ink); padding: 8px 10px; font-size: 12.5px; line-height: 1.45; white-space: nowrap; box-shadow: 0 2px 0 rgba(27, 31, 36, 0.15); color: var(--ink); pointer-events: none; }
+.tipbox.flip { left: auto; right: calc(100% + 6px); } .tipbox.up { top: auto; bottom: -10px; }
+.tipbox.row { left: auto; right: 10px; top: calc(100% + 2px); } .tipbox.row.up { top: auto; bottom: calc(100% + 2px); }   /* a full-width row: the box stays inside the chart */
+.tipbox .tiphead { font-family: var(--font-sans), sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--graphite); }
+.pt:hover .tipbox, .pt:focus .tipbox { display: block; }
+@media (max-width: 900px) { .tipbox, .tipbox.flip, .tipbox.up { left: 0; right: auto; top: auto; bottom: calc(100% + 4px); white-space: normal; width: 214px; transform: translateX(calc(-1 * var(--x))); }   /* above the chart, where a finger does not cover it; it slides with the target and cannot leave the screen */
+  .tipbox.row, .tipbox.row.up { left: auto; right: 6px; transform: none; top: calc(100% + 2px); bottom: auto; } .tipbox.row.up { top: auto; bottom: calc(100% + 2px); } }

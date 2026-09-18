@@ -13,6 +13,7 @@ import { fleetView } from "@/lib/geo";
 import { nm, kn, sgn, hhmm, dayMon, dayMonTime } from "@/lib/format";
 import { skipperMeta } from "@/lib/seo";
 import { highest } from "@/lib/highest";
+import { dayRunTip, placeTip, boatTip } from "@/lib/tips";
 export const revalidate = 900;
 const ord = (n: number) => `${n}${["th", "st", "nd", "rd"][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`;
 export async function generateStaticParams() { return (await teams()).filter(t => !t.is_ghost).map(t => ({ id: String(t.id) })); }
@@ -28,7 +29,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const c = cond.find(r => r.team_id === id);
   const daily = hist.filter(h => h.as_of.endsWith("T00:00:00+00:00")).slice(-10);
   const view = fleetView(boats, 506);
-  const markers: Marker[] = boats.map(x => ({ lat: x.lat, lon: x.lon, kind: x.team_id === id ? "hi" : "dim", label: x.team_id === id ? x.team.first_name ?? undefined : undefined, name: x.team_id === id ? undefined : x.team.first_name ?? x.team.name, href: x.team_id === id ? undefined : `/skipper/${x.team_id}` }));
+  const markers: Marker[] = boats.map(x => ({ lat: x.lat, lon: x.lon, kind: x.team_id === id ? "hi" : "dim", label: x.team_id === id ? x.team.first_name ?? undefined : undefined, name: x.team_id === id ? undefined : x.team.first_name ?? x.team.name, href: x.team_id === id ? undefined : `/skipper/${x.team_id}`, tip: boatTip(x) }));
   const lead = boats[0];
   return <Shell active="Skippers" dateline={`SKIPPERS · ${b.team.country_code} · SAIL ${b.team.sail}`} title={b.team.name.toUpperCase()} sub={<><i>{b.team.yacht}</i> · {b.team.model} · {ord(b.rank)} of {fleet.racing} at race day {fleet.race_day}</>} note={`${sgn(b.vs_kirsten_days)} days on Neuschäfer’s 2022 pace`}>
     <Tiles items={[
@@ -37,13 +38,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       { k: "24-hour run", v: `${nm(b.run24_nm)} nm`, s: `personal best ${nm(b.best24_nm)} nm, window ending ${dayMonTime(b.best24_at)}` },
       { k: "Best 4-hour leg", v: `${kn(b.best4_kn)} kt`, s: `average speed, leg ending ${dayMonTime(b.best4_at)} UTC` }]} />
     <div className="stack" style={{ display: "grid", gridTemplateColumns: "520px minmax(0,1fr)", gap: 40 }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Track since the start</div><div className="small" style={{ fontStyle: "italic" }}>fleet in grey · point at a boat for its skipper</div></div>
-        <div style={{ border: "1px solid var(--ink)", padding: 6, background: "var(--panel)" }}><FleetMap view={view} course={setup.raw_setup.course.nodes} markers={markers} track={track} next={{ name: b.next_mark, from: b, text: `${b.next_mark} ${nm(b.next_mark_nm)} nm` }} /></div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Track since the start</div><div className="small" style={{ fontStyle: "italic" }}>fleet in grey · point at a boat for its skipper, place and latest leg</div></div>
+        <div style={{ border: "1px solid var(--ink)", padding: 6, background: "var(--panel)" }}><FleetMap open="right" view={view} course={setup.raw_setup.course.nodes} markers={markers} track={track} next={{ name: b.next_mark, from: b, text: `${b.next_mark} ${nm(b.next_mark_nm)} nm` }} /></div>
         <div className="small">Position at {hhmm(b.last_fix_at)} UTC: <span className="num">{b.position_text}</span> · sailed about {nm(b.sailed_nm)} nm along the track, measured on 4-hour legs</div></div>
       <div style={{ display: "flex", flexDirection: "column", gap: 30 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Speed, last 7 days</div><div className="small" style={{ fontStyle: "italic" }}>average on each 4-hour leg, 0–8 kt</div></div><div className="panel"><SpeedLog log={b.speed_log_json} endAt={b.last_fix_at} /></div><div className="small" style={{ fontSize: 12 }}>Knots on each bar. Gold = the fastest leg of the seven days. – = missed report. Days are UTC.</div></div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Daily runs</div><div className="small" style={{ fontStyle: "italic" }}>nm in each UTC day</div></div><div className="panel"><VBars vals={daily.map(d => d.run24_nm)} labels={daily.map(d => dayMon(new Date(new Date(d.as_of).getTime() - 86400000).toISOString()))} max={180} hi={highest(daily.map(d => d.run24_nm), v => String(Math.round(v)))} width={728} height={168} /></div><div className="small" style={{ fontSize: 12 }}>Each bar is one UTC day, 00:00 to 00:00. Gold = the biggest day shown. – = not enough reports that day to measure a full 24 hours.</div></div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Place in the fleet</div><div className="small" style={{ fontStyle: "italic" }}>at 00:00 UTC each day</div></div><div className="panel"><LineChart series={[{ name: "rank", color: "var(--series-1)", vals: daily.map(d => -d.rank) }]} xs={daily.map((_, i) => i)} ymin={-16} ymax={-1} yticks={[-1, -4, -8, -12, -16]} ylab={v => String(Math.round(-v))} xlab={i => dayMon(daily[i].as_of)} width={728} height={176} /></div></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Daily runs</div><div className="small" style={{ fontStyle: "italic" }}>nm in each UTC day</div></div><div className="panel"><VBars vals={daily.map(d => d.run24_nm)} labels={daily.map(d => dayMon(new Date(new Date(d.as_of).getTime() - 86400000).toISOString()))} max={180} hi={highest(daily.map(d => d.run24_nm), v => String(Math.round(v)))} width={728} height={168} tips={daily.map((d, i) => dayRunTip(d.run24_nm, d.as_of, highest(daily.map(x => x.run24_nm), v => String(Math.round(v))).has(i)))} /></div><div className="small" style={{ fontSize: 12 }}>Each bar is one UTC day, 00:00 to 00:00. Gold = the biggest day shown. – = not enough reports that day to measure a full 24 hours.</div></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Place in the fleet</div><div className="small" style={{ fontStyle: "italic" }}>at 00:00 UTC each day</div></div><div className="panel"><LineChart series={[{ name: "rank", color: "var(--series-1)", vals: daily.map(d => -d.rank) }]} xs={daily.map((_, i) => i)} ymin={-16} ymax={-1} yticks={[-1, -4, -8, -12, -16]} ylab={v => String(Math.round(-v))} xlab={i => dayMon(daily[i].as_of)} width={728} height={176} tips={daily.map(d => placeTip(d.rank, d.as_of))} /></div></div>
       </div>
     </div>
     <SkipperPerformance b={b} perf={perf} boats={boats} />
