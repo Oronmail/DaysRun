@@ -3,7 +3,7 @@
 import argparse, gzip, json, logging, pathlib, sys, time
 from datetime import datetime, timezone
 import requests
-from . import backfill, backup, config, course, db, decode, editions, editions_data, events, monitoring, perf, stats, weather, yb
+from . import backfill, backup, config, course, db, decode, events, monitoring, perf, stats, weather, yb
 from .grid import SLOT_S, slot_time
 
 log = logging.getLogger("ggrstats")
@@ -144,6 +144,10 @@ def cmd_verify(conn, race, as_of, golden_path):
     return bad
 
 # ---------------------------------------------------------------- the Past races page: its own tables, and nothing else
+#
+# editions and editions_data are imported inside the commands below, never at the top of this module: an error raised while
+# IMPORTING them would happen before main() runs, and the live capture and derive — which need neither — would never start at
+# all. Inside a command the same error is caught by the try around it in `all`, and the site goes on publishing.
 
 IMPORT_ENDPOINTS = ("RaceSetup", "zegments", "AllPositions3")    # an import reads no leaderboard, and YB served 2018's as a 503
 WIND_WAIT_S = (60, 300)                                          # the archive refused once, twice: wait, ask again, then stop and resume later
@@ -171,6 +175,7 @@ def cmd_import_edition(conn, race, from_dir=None):
     holding the same three files (--from-dir, for the day YB's archive goes away again). The curated rows of editions_data are
     written over YB's team strings, and only the boats that started take a row or a fix. Inserts only, so a second run writes
     nothing twice. Returns the number of NEW fixes."""
+    from . import editions_data
     if from_dir:
         d = pathlib.Path(from_dir)
         setup, zeg = json.loads((d / "RaceSetup").read_text()), json.loads((d / "zegments").read_text())
@@ -203,6 +208,7 @@ def cmd_editions(conn, race, as_of, since=None, fixes=None):
     published — or every day since `since`, and by default also the day after the last one stored, so a skipped day heals itself.
     fixes: the track the caller has already read (`all` passes its own). It touches nothing else: no snapshot, no event, no
     weather call, no re-derive."""
+    from . import editions, editions_data
     start = editions_data.EDITIONS[race]["start"]
     line, course_nm, togo, on_the_line = _measure(conn, race)
     fixes = fixes if fixes is not None else db.load_fixes(conn, race)
@@ -246,7 +252,9 @@ def cmd_editions_check(conn, race=None):
     the fix NEAREST it (grid.resample), and a fast tracker gives both — so both fix times are printed.
     The day's run, 0.05 nm, and only where all six legs of that report have a distance: a run boat_stat shows across a missing
     report is bridged, which these rows refuse by design; a run left out as impossible is not compared at all.
-    Prints one line per mismatch and their number, and returns it."""
+    Prints one line per mismatch and their number, and returns that number — which the CLI hands to sys.exit, so it counts
+    MISMATCHES only: a day derive has never published is said once, as a line, and is not one of them (there is nothing to read
+    against, and a long stretch of them would otherwise overflow an exit code)."""
     race, bad = race or config.RACE_KEY, 0
     for day, as_of in conn.execute("select race_day, as_of from edition_day where race_key=%s order by race_day", (race,)).fetchall():
         T = int(as_of.timestamp())
@@ -254,7 +262,6 @@ def cmd_editions_check(conn, race=None):
                                                             from boat_stat where race_key=%s and as_of=%s""", (race, as_of))}
         if not live:
             print(f"day {day:>3}  {_utc(T)}  no derived report: nothing to read these rows against")
-            bad += 1
             continue
         whole = {tid for tid, n in conn.execute("""select team_id, count(dist_nm) from leg where race_key=%s and end_slot > %s
                                                    and end_slot <= %s group by team_id""", (race, db.ts(T - 86400), as_of)) if n == 6}
@@ -281,6 +288,7 @@ def cmd_import_edition_wind(conn, race, pace_s=2.0, until_day=None, batch=20, ma
     body that is not JSON) is waited out and the SAME batch asked again; after max_failures in a row the run stops cleanly and
     says what is left — it inserts only, so the next run asks for exactly what is still missing. Any other error is a programming
     error and comes straight out. Returns the points stored in this run; `editions` afterwards puts the wind into edition_day."""
+    from . import editions, editions_data
     sleep = sleep or time.sleep
     start = editions_data.EDITIONS[race]["start"]
     line = _measure(conn, race)[0]
@@ -300,27 +308,31 @@ def cmd_import_edition_wind(conn, race, pace_s=2.0, until_day=None, batch=20, ma
     by_day = {}
     for tid, t in missing:
         by_day.setdefault(datetime.fromtimestamp(t, timezone.utc).date(), []).append(points[(tid, t)])
+    batches = []                                                             # one call each: one UTC date, at most `batch` points
+    for day in sorted(by_day):
+        group = sorted(by_day[day], key=lambda p: (p["slot_at"], p["team_id"]))
+        batches += [group[i:i + batch] for i in range(0, len(group), batch)]
     session = session or requests.Session()
     stored, fails, walled = 0, 0, False
-    for day in sorted(by_day):
-        group, i = sorted(by_day[day], key=lambda p: (p["slot_at"], p["team_id"])), 0
-        while i < len(group):
+    for j, chunk in enumerate(batches):
+        while True:
             try:
-                rows = weather.fetch_archive_wind(group[i:i + batch], session=session, batch=batch)
+                rows = weather.fetch_archive_wind(chunk, session=session, batch=batch)
+                break
             except weather.RetryableWeatherError as e:
                 fails += 1
-                log.warning("edition wind %s: %s (refusal %d of %d)", day, e, fails, max_failures)
+                log.warning("edition wind %s: %s (refusal %d of %d)", datetime.fromtimestamp(chunk[0]["slot_at"], timezone.utc).date(), e, fails, max_failures)
                 walled = fails >= max_failures
                 if walled:
                     break
-                sleep(WIND_WAIT_S[min(fails, len(WIND_WAIT_S)) - 1])
-                continue                                                     # the same batch again: nothing of it was stored
-            db.insert_edition_wind(conn, race, rows)
-            conn.commit()
-            stored, fails, i = stored + len(rows), 0, i + batch
-            sleep(pace_s)
+                sleep(WIND_WAIT_S[min(fails, len(WIND_WAIT_S)) - 1])          # then the same batch again: nothing of it was stored
         if walled:
             break
+        db.insert_edition_wind(conn, race, rows)
+        conn.commit()
+        stored, fails = stored + len(rows), 0
+        if j + 1 < len(batches):
+            sleep(pace_s)                                                    # between calls only: no wait after the last batch
     left = len(missing) - stored
     log.info("edition wind %s: %d points stored, %d still missing%s", race, stored, left, " (the archive walled this run)" if walled else "")
     print(f"points stored: {stored}, still missing: {left}")
@@ -334,7 +346,7 @@ def main(argv=None):
     ap.add_argument("--race", default=config.RACE_KEY)
     ap.add_argument("--master", help="backfill: path to AllPositions3.master.json.gz")
     ap.add_argument("--snapshots", help="backfill: directory of <endpoint>.<stamp>.gz files")
-    ap.add_argument("--since", help="backfill/derive: derive every slot from this ISO time; weather: fill every missing (boat, fix) pair from this ISO time, paced")
+    ap.add_argument("--since", help="backfill/derive: derive every slot from this ISO time; weather: fill every missing (boat, fix) pair from this ISO time, paced; editions: write every race day from this ISO time")
     ap.add_argument("--golden", default="tests/fixtures/golden.snap.json")
     ap.add_argument("--from-dir", help="import-edition: a folder holding RaceSetup, zegments and AllPositions3 (YB's binary) or AllPositions3.json")
     ap.add_argument("--until-day", type=int, help="import-edition-wind: go no further than this race day (the archive's free allowance is counted per location per day)")
@@ -384,7 +396,7 @@ def main(argv=None):
                     conn.rollback(); log.warning("editions failed: %s", e); monitoring.warn("the editions rows failed", reason=type(e).__name__)
                 cmd_revalidate()
         elif a.command == "backfill":
-            setup_path = sorted(__import__("pathlib").Path(a.snapshots).glob("RaceSetup.*.gz"))[-1]
+            setup_path = sorted(pathlib.Path(a.snapshots).glob("RaceSetup.*.gz"))[-1]
             setup = json.load(gzip.open(setup_path))
             db.upsert_race(conn, a.race, setup); db.upsert_teams(conn, a.race, setup); conn.commit()
             print(backfill.import_archive(conn, a.race, a.master, a.snapshots))

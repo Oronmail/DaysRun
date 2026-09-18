@@ -1,7 +1,11 @@
 # worker/tests/test_run_cli.py — the CLI's own wiring: which command each line calls with which arguments, and the promise that
 # the Past races rows can never stop the live pipeline. No database and no network: every command is replaced by a recorder.
+import sys
 import pytest
+import ggrstats
 from ggrstats import db, run
+
+REAL_CMD_EDITIONS = run.cmd_editions            # kept before any fixture replaces it, for the isolation test below
 
 class FakeConn:
     """main() only opens the connection, reads one number from it and closes it; the commands themselves are replaced."""
@@ -69,6 +73,26 @@ def test_all_reaches_revalidate_even_when_the_editions_rows_fail(cli, monkeypatc
     monkeypatch.setattr(run, "cmd_editions", boom)
     run.main(["all"])
     assert [c[0] for c in calls] == ["cmd_capture", "cmd_derive", "safe_weather", "cmd_weather_sweep", "cmd_editions", "cmd_revalidate"]
+    assert conn.rolled_back and conn.closed
+
+def test_the_live_pipeline_does_not_import_the_past_races_modules_at_all():
+    """An error raised while IMPORTING editions or editions_data would happen before main() runs, so capture and derive would
+    never start and the site would stop publishing. They are imported inside the three commands that need them instead, where
+    the try around them catches anything they throw. This is the guard on that."""
+    assert not hasattr(run, "editions") and not hasattr(run, "editions_data")
+
+def test_all_reaches_revalidate_when_a_past_races_module_cannot_even_be_read(cli, monkeypatch):
+    """The same promise from the other side: a module of the Past races page that blows up on first touch — an import error, a
+    syntax error deployed by mistake — costs this year's race nothing at all."""
+    calls, conn = cli
+    class Broken:
+        def __getattr__(self, name):
+            raise ImportError("editions_data could not be imported")
+    monkeypatch.setattr(ggrstats, "editions_data", Broken())
+    monkeypatch.setitem(sys.modules, "ggrstats.editions_data", Broken())
+    monkeypatch.setattr(run, "cmd_editions", REAL_CMD_EDITIONS)               # the real command, against a module that cannot be used
+    run.main(["all"])
+    assert [c[0] for c in calls] == ["cmd_capture", "cmd_derive", "safe_weather", "cmd_weather_sweep", "cmd_revalidate"]
     assert conn.rolled_back and conn.closed
 
 def test_all_writes_the_editions_rows_after_the_derive_and_before_revalidate(cli):

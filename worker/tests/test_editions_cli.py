@@ -188,30 +188,37 @@ def test_2026_since_writes_every_day_from_that_date_and_a_gap_heals_itself(conn)
     run.cmd_editions(conn, "ggr2026", as_of=T26)                                              # the largest day stored is 7: days 8, 9 and 10 come back
     assert [r[0] for r in rows(conn, "select race_day from edition_day where race_key='ggr2026' order by race_day")] == [5, 6, 7, 8, 9, 10]
 
-def test_editions_check_reads_this_years_rows_against_the_live_figures(conn, capsys):
-    """The standing cross-check of the design's §4. A mismatch is not always a fault: boat_stat takes the latest fix up to 20
-    minutes after the report, the page's own rows the fix NEAREST it, so a fast tracker can give both — the line prints both
-    fix times."""
+def test_editions_check_says_nought_on_healthy_rows_and_names_a_boat_whose_figure_moved(conn, capsys):
+    """The standing cross-check of the design's §4, and the only test of its accuracy: rows just written by cmd_editions must
+    read nought — anything else means the rows and the live pages disagree, or the check cries wolf. A mismatch is not always a
+    fault, so the line makes the reason readable: boat_stat takes the latest fix up to 20 minutes after the report, the page's
+    own rows the fix NEAREST it, and a fast tracker gives both, so both fix times are printed."""
     from ggrstats import run
     seed_2026_fleet(conn)
     run.cmd_derive(conn, "ggr2026", T26, None)
     run.cmd_editions(conn, "ggr2026", as_of=T26)
     bad = run.cmd_editions_check(conn, "ggr2026")
     lines = capsys.readouterr().out.strip().splitlines()
-    assert lines[-1] == f"mismatches: {bad}" and len(lines) == bad + 1                        # one line per mismatch, and the count
+    assert bad == 0 and lines == ["mismatches: 0"]                                            # every stored distance and run agrees
     conn.execute("update edition_boat_day set togo_nm = togo_nm + 5 where race_key='ggr2026' and team_id=6 and fresh")
     conn.commit()
-    assert run.cmd_editions_check(conn, "ggr2026") == bad + 1
-    assert "distance to finish" in capsys.readouterr().out
+    assert run.cmd_editions_check(conn, "ggr2026") == 1
+    out = capsys.readouterr().out
+    assert "distance to finish" in out and "against" in out                                   # the two fix times, side by side
 
-def test_editions_check_says_once_that_a_day_was_never_derived(conn):
+def test_editions_check_says_once_that_a_day_was_never_derived_and_does_not_count_it(conn, capsys):
+    """A day derive has never published is not a mismatch: there is nothing to read the rows against. It is said once, as a
+    line, and stays out of the number — which the CLI hands to sys.exit, where a long stretch of them would wrap at 255."""
     from ggrstats import db, run
     seed_2026_fleet(conn)
     run.cmd_derive(conn, "ggr2026", T26, None)
     run.cmd_editions(conn, "ggr2026", as_of=T26, since=T26 - 86400)
     conn.execute("delete from boat_stat where race_key='ggr2026' and as_of=%s", (db.ts(T26 - 86400),))
     conn.commit()
-    assert run.cmd_editions_check(conn, "ggr2026") == 1                                       # one line for the day, not one per boat
+    assert run.cmd_editions_check(conn, "ggr2026") == 0
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert len([l for l in lines if "no derived report" in l]) == 1                           # one line for the day, not one per boat
+    assert lines[-1] == "mismatches: 0"
 
 # ---------------------------------------------------------------- import-edition-wind
 
