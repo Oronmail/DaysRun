@@ -222,15 +222,23 @@ def team_ends(conn, key):
             for tid, e, how in conn.execute("select id, extract(epoch from ended_at)::bigint, ended_how from team where race_key=%s and not is_ghost", (key,))}
 
 def _replace(conn, table, key, rows, cols, day_col="race_day"):
-    """Delete the race's rows for the given days (or all, when day_col is None) and insert the new ones. Every column is
-    read with r.get(c): a caller that does not yet supply a newer column (best24_at, best_sofar_nm, …) leaves it NULL."""
-    days = sorted({r[day_col] for r in rows}) if day_col else None
+    """Delete the race's rows for the given days and insert the new ones. day_col is None (milestones): the whole
+    race's table is the unit of replacement, so an empty rows list IS the new (empty) state. day_col set (the day
+    tables): only the days present in rows are touched, so an empty rows list means nothing to write and the call
+    returns without touching a single row already stored for a different day. Every column is read with r.get(c):
+    a caller that does not yet supply a newer column (best24_at, best_sofar_nm, …) leaves it NULL."""
+    if day_col is not None and not rows:
+        return
     with conn.pipeline(), conn.cursor() as cur:
-        if days: cur.execute(f"delete from {table} where race_key=%s and {day_col} = any(%s)", (key, days))
-        else: cur.execute(f"delete from {table} where race_key=%s", (key,))
-        cur.executemany(f"insert into {table} (race_key, {', '.join(cols)}) values (%s, {', '.join(['%s'] * len(cols))})",
-                        [(key, *[ts(r.get(c)) if c in ("as_of", "fix_at", "passed_at", "slot_at", "best24_at", "best_sofar_at") else r.get(c)
-                                 for c in cols]) for r in rows])
+        if day_col is None:
+            cur.execute(f"delete from {table} where race_key=%s", (key,))
+        else:
+            days = sorted({r[day_col] for r in rows})
+            cur.execute(f"delete from {table} where race_key=%s and {day_col} = any(%s)", (key, days))
+        if rows:
+            cur.executemany(f"insert into {table} (race_key, {', '.join(cols)}) values (%s, {', '.join(['%s'] * len(cols))})",
+                            [(key, *[ts(r.get(c)) if c in ("as_of", "fix_at", "passed_at", "slot_at", "best24_at", "best_sofar_at") else r.get(c)
+                                     for c in cols]) for r in rows])
 
 DAY_COLS = ("race_day", "as_of", "racing", "finished", "fresh", "leader_team_id", "leader_mg_nm", "median_mg_nm", "last_mg_nm", "best_run_nm", "best_run_team_id",
             "best_sofar_nm", "best_sofar_team_id", "best_sofar_at", "mean_run_nm", "runs_n", "wind_kt", "wind_legs", "legs_upwind", "legs_reaching", "legs_running", "straight_pct")

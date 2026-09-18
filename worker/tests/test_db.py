@@ -144,6 +144,7 @@ def test_past_teams_and_edition_tables_roundtrip(conn):
     assert conn.execute("select round(best24_nm), extract(epoch from best24_at)::bigint from edition_boat_day where race_key='ggr2018' and team_id=8 and race_day=12").fetchone() == (163, 1531440000)
     assert conn.execute("select median_mg_nm from edition_day where race_key='ggr2018' and race_day=12").fetchone()[0] == 1210.0
     assert conn.execute("select best_sofar_team_id, extract(epoch from best_sofar_at)::bigint from edition_day where race_key='ggr2018' and race_day=12").fetchone() == (85, 1530600000)
+    assert conn.execute("select best_sofar_nm from edition_day where race_key='ggr2018' and race_day=12").fetchone()[0] == 172.0
     assert conn.execute("select race_day from edition_milestone where race_key='ggr2018' and team_id=8").fetchone()[0] == 145
     db.replace_edition_days(conn, "ggr2018", [{"race_day": 12, "as_of": 1531440000, "racing": 16, "finished": 0, "fresh": 15, "leader_team_id": 85,
         "leader_mg_nm": 1388.0, "median_mg_nm": 1211.0, "last_mg_nm": 1014.0, "best_run_nm": 163.0, "best_run_team_id": 85, "mean_run_nm": 137.0, "runs_n": 15,
@@ -151,3 +152,29 @@ def test_past_teams_and_edition_tables_roundtrip(conn):
     conn.commit()
     assert conn.execute("select count(*), max(median_mg_nm) from edition_day where race_key='ggr2018'").fetchone() == (1, 1211.0)   # replaced, not duplicated
     assert conn.execute("select best_sofar_nm from edition_day where race_key='ggr2018' and race_day=12").fetchone()[0] is None     # this call omitted it: NULL, not stale
+
+def test_replace_with_empty_rows_touches_nothing(conn):
+    """A day with nothing to write must delete nothing: replace_edition_days/replace_edition_boat_days with an empty
+    list must leave every day already stored alone. Milestones are the whole-race table (day_col=None): there an
+    empty list IS the new state, so a race with no milestones left ends with none."""
+    from ggrstats import db
+    db.upsert_race(conn, "ggr2018", {"title": "Golden Globe Race 2018", "course": {"distance": 46484.9}, "tags": [{"start": 1530439200}], "teams": []})
+    db.upsert_past_teams(conn, "ggr2018", [{"id": 8, "name": "Jean-Luc Van Den Heede", "first_name": None, "model": "Rustler 36", "yacht": "Matmut",
+        "design_class": "Rustler 36", "status": "racing", "start_at": 1530439200, "ended_at": None, "ended_how": None,
+        "ended_where": None, "class_note": None, "source": "https://goldengloberace.com/"}])
+    day = lambda d: {"race_day": d, "as_of": 1531440000 + d, "racing": 16, "finished": 0, "fresh": 16, "leader_team_id": 8,
+        "leader_mg_nm": 1000.0, "median_mg_nm": 900.0, "last_mg_nm": 800.0, "best_run_nm": 150.0, "best_run_team_id": 8,
+        "mean_run_nm": 130.0, "runs_n": 15, "wind_kt": 10.0, "wind_legs": 90, "legs_upwind": 20, "legs_reaching": 20, "legs_running": 50, "straight_pct": 105.0}
+    boat_day = lambda d: {"team_id": 8, "race_day": d, "as_of": 1531440000 + d, "racing": True, "finished": False, "fresh": True,
+        "fix_at": 1531440001 + d, "lat": 27.9, "lon": -14.7, "togo_nm": 24000.0, "mg_nm": 1300.0, "sailed_nm": 1400.0, "run24_nm": 150.0, "place": 2}
+    db.replace_edition_days(conn, "ggr2018", [day(11), day(12)])
+    db.replace_edition_boat_days(conn, "ggr2018", [boat_day(11), boat_day(12)])
+    db.replace_edition_milestones(conn, "ggr2018", [{"team_id": 8, "milestone": "Lanzarote", "passed_at": 1530439300, "race_day": 1}])
+    conn.commit()
+    db.replace_edition_days(conn, "ggr2018", [])
+    db.replace_edition_boat_days(conn, "ggr2018", [])
+    db.replace_edition_milestones(conn, "ggr2018", [])
+    conn.commit()
+    assert conn.execute("select count(*) from edition_day where race_key='ggr2018'").fetchone()[0] == 2        # untouched
+    assert conn.execute("select count(*) from edition_boat_day where race_key='ggr2018'").fetchone()[0] == 2   # untouched
+    assert conn.execute("select count(*) from edition_milestone where race_key='ggr2018'").fetchone()[0] == 0  # the new (empty) whole-race state
