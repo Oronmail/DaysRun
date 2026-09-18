@@ -56,9 +56,11 @@ def test_veteran_hulls_and_returning_skippers():
     assert beagle["races"][0] == {"race_key": "ggr2018", "team_id": 8, "yacht_then": "Matmut", "note": "won the race"}
     ids_by_race = {key: {r["id"] for r in rows} for key, rows in ed.TEAMS.items()}
     for h in ed.VETERAN_HULLS:
+        assert "PASTE" not in h["source"], h["yacht_2026"]                  # the brief's own draft used "GGR + \"PASTE\"" here
         for rc in h["races"]:
             assert set(rc.keys()) == {"race_key", "team_id", "yacht_then", "note"}
             assert rc["team_id"] in ids_by_race[rc["race_key"]], (h["yacht_2026"], rc)
+            assert "PASTE" not in rc["note"] and "PASTE" not in rc["yacht_then"], (h["yacht_2026"], rc)
     for r in ed.RETURNING:
         for rc in r["races"]:
             assert rc["team_id"] in ids_by_race[rc["race_key"]], (r["team_2026"], rc)
@@ -67,3 +69,16 @@ def test_veteran_hulls_and_returning_skippers():
 def test_milestones_and_2026_start():
     assert [m[0] for m in ed.MILESTONES] == ["Lanzarote", "Equator", "Cape of Good Hope", "Hobart", "Cape Horn", "Finish"]
     assert ed.EDITIONS["ggr2026"]["start"] == config.START_AT
+
+def test_design_class_strips_a_trailing_ketch_only():
+    row = lambda key, i: next(r for r in ed.TEAMS[key] if r["id"] == i)
+    for key, i in (("ggr2018", 67), ("ggr2018", 22), ("ggr2018", 888), ("ggr2022", 9)):    # Amra, McGuckin, Cousot, Guggenberger
+        r = row(key, i)
+        assert r["model"] == "Biscay 36 ketch" and r["design_class"] == "Biscay 36", (key, i)
+    r8 = row("ggr2018", 8)                                                                 # Van Den Heede: no " ketch" to strip
+    assert " ketch" not in r8["model"] and r8["design_class"] == r8["model"]
+
+def test_ended_helper_reads_ended_at():
+    row = lambda key, i: next(r for r in ed.TEAMS[key] if r["id"] == i)
+    finisher, retired = row("ggr2018", 8), row("ggr2018", 94)
+    assert ed.ended(finisher) == finisher["ended_at"] and ed.ended(retired) == retired["ended_at"]
