@@ -2,7 +2,7 @@
 // numbers, the fleet's runs as the picture, three stories). Dark and large because it is watched as video on phones. Every length
 // is in u = 1/1920 of the width (or 1/1080 of the height, whichever is smaller), so it fills any screen share exactly.
 // All numbers and sentences come from lib/slide.ts; this file only draws.
-import { numberLift, scaleMax, type Column } from "@/lib/slide";
+import { runChange, scaleMax, type Column } from "@/lib/slide";
 import { nm, kn, sgn, hhmm, dayMon, SITE_NAME, SITE_HOST } from "@/lib/format";
 const K = { bg: "#10161C", panel: "#18222C", line: "#26323D", text: "#ECE6D6", muted: "#9AA3AA", gold: "#DEB200", gain: "#5FB3A1", loss: "#E0604A", amber: "#F2A93B", bar: "#5C6B78" };
 const u = (n: number) => `calc(${n} * var(--u))`;
@@ -23,28 +23,34 @@ function Hero({ k, big, unit, color, children }: { k: string; big: string; unit:
 function Story({ k, children }: { k: string; children: React.ReactNode }) {
   return <div style={{ ...tile, padding: `${u(16)} ${u(28)}`, gap: u(5) }}><div style={{ ...label, fontSize: u(19) }}>{k}</div><div style={{ fontSize: u(25), lineHeight: 1.22 }}>{children}</div></div>;
 }
-// One boat's column, kept to what reads in a glance: the miles, a plain bar (its six 4-hour legs show only as faint notches; the
-// fastest leg of the day is the one gold block; the biggest run is marked by its gold number and name, not its bar), a tick for the day before, the name, the place. Anything that needs a
-// word gets the word ("personal best", "tracker silent"), never an abbreviation: the first viewer asked what PB and gap meant.
+// One boat's column, kept to what reads in a glance: the miles standing on the bar (the columns are in order of the run, so the
+// numbers step down like a staircase and nothing else is drawn at their height), a plain bar (its six 4-hour legs show only as faint
+// notches; the fastest leg of the day is the one gold block; the biggest run is marked by its gold number and name, not its bar),
+// the name, the place, and the miles more or fewer than the day before. Anything that needs a word gets the word ("personal best",
+// "tracker silent", "the same"), never an abbreviation: the first viewer asked what PB and gap meant.
+const FOOT = 78, HEAD = 80;                                              // under the foot rule: name, place, difference; above the bar: the number and a two-line word
 function Col({ c, lead, fastestSlot, asOf, H, max }: { c: Column; lead: boolean; fastestSlot: number | null; asOf: string; H: number; max: number }) {
-  const gold = lead ? K.gold : undefined, bridged = c.bridgedNm > 0; let hatchDone = false;
+  const gold = lead ? K.gold : undefined, bridged = c.bridgedNm > 0, change = runChange(c); let hatchDone = false;
   const blocks = c.legs.map((l, i) => {
     if (l) return <div key={i} style={{ height: u(l.nm / max * H), background: fastestSlot === i ? K.gold : K.bar }} />;
     if (hatchDone || !bridged) return null; hatchDone = true;                                                     // one block for the whole silence: the run less the legs that are known
     return <div key={i} style={{ height: u(c.bridgedNm / max * H), border: `${u(1.5)} dashed ${K.muted}`, background: `repeating-linear-gradient(45deg, ${K.bar}55 0 ${u(5)}, transparent ${u(5)} ${u(10)})` }} />;
   }).reverse();                                                                                                   /* the oldest leg at the foot */
-  const flag = c.stale ? `missed ${hhmm(asOf)}` : bridged ? "tracker silent" : c.pb ? "personal best" : null;
-  return <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: u(H + 128), minWidth: 0, opacity: c.stale ? 0.45 : 1 }}>
-    <div style={{ width: 0, display: "flex", justifyContent: "center", fontFamily: SANS, fontSize: u(14), fontWeight: 700, letterSpacing: u(0.6), textTransform: "uppercase", whiteSpace: "nowrap", color: c.stale || bridged ? K.amber : K.gain, minHeight: u(18) }}>{flag ?? " "}</div>   {/* zero width: a long word never pushes its column off the grid */}
-    <div style={{ fontFamily: MONO, fontSize: u(28), color: gold, marginBottom: u(6 + (c.stale ? 0 : numberLift(c.run, c.dayBefore, max, H))) }}>{c.stale ? "—" : nm(c.run)}</div>   {/* above the day-before line when yesterday was the longer run */}
-    <div style={{ width: u(74), position: "relative", display: "flex", flexDirection: "column", gap: u(1) }}>{c.stale ? null : blocks}
-      {!c.stale && c.dayBefore != null && <div style={{ position: "absolute", left: u(-7), right: u(-7), bottom: u(c.dayBefore / max * H), borderTop: `${u(3)} solid ${K.text}` }} />}</div>
-    <div style={{ fontFamily: SANS, fontSize: u(21), fontWeight: 600, marginTop: u(7), color: gold }}>{c.first}</div>
-    <div style={{ fontFamily: SANS, fontSize: u(17), fontWeight: 600, color: K.muted }}>{ord(c.place)}</div>
+  const flag = c.stale ? ["missed", hhmm(asOf)] : bridged ? ["tracker", "silent"] : c.pb ? ["personal", "best"] : null;   // two short lines: a word never reaches into the next column
+  return <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: u(H + HEAD + FOOT), minWidth: 0, opacity: c.stale ? 0.45 : 1 }}>
+    {flag && <div style={{ fontFamily: SANS, fontSize: u(14), fontWeight: 700, letterSpacing: u(0.6), lineHeight: 1.15, textTransform: "uppercase", textAlign: "center", whiteSpace: "nowrap", color: c.stale || bridged ? K.amber : K.gain }}>{flag[0]}<br />{flag[1]}</div>}
+    <div style={{ fontFamily: MONO, fontSize: u(28), color: gold, marginBottom: u(6) }}>{c.stale ? "—" : nm(c.run)}</div>
+    <div style={{ alignSelf: "stretch", display: "flex", justifyContent: "center", borderBottom: `${u(2)} solid ${K.line}` }}>                                   {/* the columns touch, so this is one foot rule under the whole fleet */}
+      <div style={{ width: u(74), display: "flex", flexDirection: "column", gap: u(1) }}>{c.stale ? null : blocks}</div></div>
+    <div style={{ height: u(FOOT), display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <div style={{ fontFamily: SANS, fontSize: u(21), fontWeight: 600, marginTop: u(7), color: gold }}>{c.first}</div>
+      <div style={{ fontFamily: SANS, fontSize: u(17), fontWeight: 600, color: K.muted }}>{ord(c.place)}</div>
+      <div style={{ fontFamily: MONO, fontSize: u(19), lineHeight: 1.2, whiteSpace: "nowrap", color: change == null || change === 0 ? K.muted : change > 0 ? K.gain : K.loss }}>
+        {change == null ? " " : change === 0 ? <span style={{ fontFamily: SANS, fontSize: u(16) }}>the same</span> : <><span style={{ fontSize: u(15), marginRight: u(5) }}>{change > 0 ? "▲" : "▼"}</span>{Math.abs(change)}</>}</div></div>
   </div>;
 }
 export default function DonsSlide({ d }: { d: SlideData }) {
-  const day = new Date(d.asOf), lead = d.biggest, max = scaleMax(d.cols), H = 252, delta = d.average != null && d.averageBefore != null ? Math.round(d.average) - Math.round(d.averageBefore) : null;
+  const day = new Date(d.asOf), lead = d.biggest, max = scaleMax(d.cols), H = 222, delta = d.average != null && d.averageBefore != null ? Math.round(d.average) - Math.round(d.averageBefore) : null;
   const fastestSlot = (c: Column) => (d.fastest && d.fastest.team_id === c.team_id ? 5 - Math.round((day.getTime() - new Date(d.fastest.end_slot).getTime()) / (4 * 3600 * 1000)) : null);
   const group = (g: [number, string[]][]) => g.map(([n, who]) => `${n} ${who.join(", ")}`).join(" · ");
   return <div style={{ ["--u" as string]: "min(calc(100vw / 1920), calc(100vh / 1080))", minHeight: "100vh", background: K.bg, display: "grid", placeItems: "center" } as React.CSSProperties}>
@@ -62,7 +68,7 @@ export default function DonsSlide({ d }: { d: SlideData }) {
         </div>
         <div style={{ ...tile, padding: `${u(14)} ${u(32)} ${u(10)}`, gap: u(2) }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: u(30) }}><div><div style={{ ...label, fontSize: u(19) }}>The day’s runs · nautical miles sailed in 24 hours</div><div style={{ fontFamily: SANS, fontSize: u(15), color: K.muted, marginTop: u(3) }}>sailed along the track · YB’s 24 h column is miles made good toward the finish, the same or a little less</div></div>
           <div style={{ display: "flex", gap: u(28), alignItems: "center", fontFamily: SANS, fontSize: u(16), color: K.muted, whiteSpace: "nowrap" }}>
-            <span><span style={{ display: "inline-block", width: u(26), borderTop: `${u(3)} solid ${K.text}`, verticalAlign: "middle" }} /> the day before</span>
+            <span><span style={{ color: K.gain }}>▲</span><span style={{ color: K.loss }}>▼</span> miles more or fewer than the day before</span>
             <span><span style={{ display: "inline-block", width: u(16), height: u(14), background: K.gold, verticalAlign: "middle" }} /> the fastest 4 hours</span>
             <span><span style={{ display: "inline-block", width: u(20), height: u(14), border: `${u(1.5)} dashed ${K.muted}`, verticalAlign: "middle" }} /> tracker silent: the run is a minimum</span></div></div>
           <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, d.cols.length)}, 1fr)` }}>{d.cols.map(c => <Col key={c.team_id} c={c} lead={lead?.team_id === c.team_id} fastestSlot={fastestSlot(c)} asOf={d.asOf} H={H} max={max} />)}</div></div>

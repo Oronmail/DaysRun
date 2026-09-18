@@ -56,14 +56,13 @@ export function ghostLine(leader: string, vsVdhNm: number | null, aheadOfVdh: nu
   return n === 0 ? { head: `${leader} is level`, rest: `with ${where}` } : { head: `${leader} is ${Math.abs(n)} nm ${n > 0 ? "ahead" : "behind"}`, rest: n > 0 ? `of ${where}` : where };
 }
 
-// The columns' geometry. The day-before line is drawn at yesterday's run on the same scale as the bar; when yesterday was the
-// longer run the line sits ABOVE the bar, exactly where the number is printed, and struck through it. The number therefore
-// rides above whichever is higher, the bar or the line: numberLift is how far (in the chart's units) it moves up.
-const LINE_CLEAR = 8;                                                   // the line's thickness and a little air
-export function numberLift(run: number | null, dayBefore: number | null, max: number, H: number): number {
-  return run == null || dayBefore == null || dayBefore < run ? 0 : (dayBefore - run) / max * H + LINE_CLEAR;
+// The day before, under each name: how many miles more or fewer than the run of 24 hours earlier. Rounded before judged, so the
+// difference always agrees with the two figures as printed. Blank without a fair comparison: a boat that missed the report, no
+// complete day before, or a run across a silent tracker (a minimum: a difference from it would be a guess).
+export function runChange(c: { stale: boolean; run: number | null; dayBefore: number | null; bridgedNm: number }): number | null {
+  return c.stale || c.run == null || c.dayBefore == null || c.bridgedNm > 0 ? null : Math.round(c.run) - Math.round(c.dayBefore);
 }
-/** The chart's scale holds yesterday's runs too, so a line (and the number lifted above it) can never leave the tile. */
-export function scaleMax(cols: { stale: boolean; run: number | null; dayBefore: number | null }[]): number {
-  return Math.max(190, ...cols.flatMap(c => (c.stale ? [] : [c.run ?? 0, c.dayBefore ?? 0])));
+/** The chart's scale: the day's longest run, never tighter than 190 nm, so the bars of one day can be set against another's. */
+export function scaleMax(cols: { stale: boolean; run: number | null }[]): number {
+  return Math.max(190, ...cols.flatMap(c => (c.stale ? [] : [c.run ?? 0])));
 }

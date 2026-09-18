@@ -1,6 +1,6 @@
 // site/__tests__/slide.test.ts — the daily slide's numbers and sentences (lib/slide.ts). The cases are the fleet of 17 Sep 2026 1600 UTC.
 import { describe, it, expect } from "vitest";
-import { sixLegs, columns, biggestRun, fleetAverage, fastestLeg, leaderLine, ghostLine, scaleMax, numberLift } from "../lib/slide";
+import { sixLegs, columns, biggestRun, fleetAverage, fastestLeg, leaderLine, ghostLine, scaleMax, runChange } from "../lib/slide";
 import { placeGroups } from "../lib/moves";
 
 const AS_OF = "2026-09-17T16:00:00+00:00", H4 = 4 * 3600 * 1000, T = new Date(AS_OF).getTime();
@@ -82,17 +82,19 @@ describe("against the 2018 winner, and places", () => {
     const g = placeGroups([boat(1, "A", 1, 1, { rank_change: 0 }), boat(2, "B", 2, 1, { rank_change: 1 }), boat(3, "C", 3, 1, { rank_change: -1 }), boat(4, "D", 4, 1, { rank_change: 5, stale: true })]);
     expect(g).toEqual({ ups: [[1, ["B"]]], downs: [[1, ["C"]]] });
   });
-  it("lifts a column's number above the day-before line when yesterday's run was the longer one, so the line never strikes through it", () => {
-    expect(numberLift(159, 171, 190, 252)).toBeCloseTo((171 - 159) / 190 * 252 + 8, 5);   // the line sits 12 nm above the bar: the number goes above the line
-    expect(numberLift(151, 140, 190, 252)).toBe(0);                                        // yesterday shorter: the line is inside the bar, nothing to avoid
-    expect(numberLift(150, 150, 190, 252)).toBeCloseTo(8, 5);                              // level with the bar's top: still in the number's way
-    expect(numberLift(150, null, 190, 252)).toBe(0);
-    expect(numberLift(null, 140, 190, 252)).toBe(0);                                       // a boat that missed the report draws neither bar nor line
+  it("says how many miles more or fewer than the day before, judged on the figures as printed", () => {
+    const col = (run: number | null, dayBefore: number | null, o: Record<string, unknown> = {}) => ({ stale: false, run, dayBefore, bridgedNm: 0, ...o });
+    expect(runChange(col(158.8, 176.1))).toBe(-17);                                        // 18 Sep 16:00, Henry: 159 after 176
+    expect(runChange(col(151.2, 140.0))).toBe(11);
+    expect(runChange(col(140.4, 139.6))).toBe(0);                                          // both print as 140: "the same", not a gain of one
+    expect(runChange(col(150, null))).toBeNull();                                          // no complete day before to compare with
+    expect(runChange(col(null, 140))).toBeNull();
+    expect(runChange(col(150, 140, { stale: true }))).toBeNull();                          // a boat that missed the report is compared with nothing
+    expect(runChange(col(142, 150, { bridgedNm: 51.7 }))).toBeNull();                      // a run across a silent tracker is a minimum: a difference from it would be a guess
   });
-  it("scales the chart to hold yesterday's runs too, so a lifted number cannot leave its tile", () => {
-    const cols = [{ stale: false, run: 159, dayBefore: 204 }, { stale: false, run: 151, dayBefore: 140 }, { stale: true, run: 300, dayBefore: 300 }] as never[];
-    expect(scaleMax(cols)).toBe(204);                                                      // a missed boat draws nothing and does not count
-    expect(scaleMax([{ stale: false, run: 120, dayBefore: 110 }] as never[])).toBe(190);   // never tighter than 190 nm
+  it("scales the chart to the day's runs, never tighter than 190 nm, so the bars of one day can be set against another's", () => {
+    expect(scaleMax([{ stale: false, run: 204 }, { stale: false, run: 151 }, { stale: true, run: 300 }] as never[])).toBe(204);   // a missed boat draws nothing and does not count
+    expect(scaleMax([{ stale: false, run: 120 }] as never[])).toBe(190);
   });
   it("calls a run a personal best only when it equals the boat's own best, never because it is the fleet's longest run of the day", () => {
     // 18 Sep 16:00: Henry's 159 nm was the longest run of the last 24 hours (the worker's fleet_best24), a day after his 180: the board said "personal best".
