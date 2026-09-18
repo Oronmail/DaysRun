@@ -2,7 +2,7 @@
 // numbers, the fleet's runs as the picture, three stories). Dark and large because it is watched as video on phones. Every length
 // is in u = 1/1920 of the width (or 1/1080 of the height, whichever is smaller), so it fills any screen share exactly.
 // All numbers and sentences come from lib/slide.ts; this file only draws.
-import { runChange, scaleMax, type Column } from "@/lib/slide";
+import { isStopped, runChange, scaleMax, type Column } from "@/lib/slide";
 import { nm, kn, sgn, hhmm, dayMon, SITE_NAME, SITE_HOST } from "@/lib/format";
 const K = { bg: "#10161C", panel: "#18222C", line: "#26323D", text: "#ECE6D6", muted: "#9AA3AA", gold: "#DEB200", gain: "#5FB3A1", loss: "#E0604A", amber: "#F2A93B", bar: "#5C6B78" };
 const u = (n: number) => `calc(${n} * var(--u))`;
@@ -40,7 +40,7 @@ function Col({ c, lead, fastestSlot, asOf, H, max }: { c: Column; lead: boolean;
   // 24 hours is labelled with the hour its own 24 hours end at, in the words of the board's own head ("the 24 hours to 16:00").
   const ends = c.endsAt, sameDay = ends != null && new Date(ends).getUTCDate() === new Date(asOf).getUTCDate();
   const flag = ends ? ["the 24 hours", `to ${hhmm(ends)}${sameDay ? "" : " " + WEEKDAY[new Date(ends).getUTCDay()]}`]
-    : c.stale ? ["missed", hhmm(asOf)] : bridged ? ["tracker", "silent"] : c.pb ? ["personal", "best"] : null;
+    : c.stale ? ["missed", hhmm(asOf)] : isStopped(c) ? ["not", "moving"] : bridged ? ["tracker", "silent"] : c.pb ? ["personal", "best"] : null;
   return <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: u(H + HEAD + FOOT), minWidth: 0, opacity: c.stale ? (drawn ? 0.55 : 0.4) : 1 }}>
     {flag && <div style={{ fontFamily: SANS, fontSize: u(14), fontWeight: 700, letterSpacing: u(0.6), lineHeight: 1.15, textTransform: "uppercase", textAlign: "center", whiteSpace: "nowrap", color: c.stale || bridged ? K.amber : K.gain }}>{flag[0]}<br />{flag[1]}</div>}
     <div style={{ fontFamily: MONO, fontSize: u(28), color: gold, marginBottom: u(6) }}>{nm(c.run)}</div>
@@ -74,7 +74,7 @@ export default function DonsSlide({ d }: { d: SlideData }) {
           <Hero k="Fleet average run" big={d.average == null ? "—" : nm(d.average)} unit="nm">{delta == null ? "boats with all six legs" : delta === 0 ? "the same as the day before" : <><span style={{ color: delta > 0 ? K.gain : K.loss }}>{delta > 0 ? "▲" : "▼"} {Math.abs(delta)}</span> on the day before</>}</Hero>
           <Hero k="Fastest 4-hour leg" big={d.fastest ? kn(d.fastest.kt) : "—"} unit="kt">{d.fastest ? <><b style={{ fontFamily: SANS }}>{d.fastest.first}</b> · from {hhmm(new Date(new Date(d.fastest.end_slot).getTime() - 4 * 3600 * 1000).toISOString())} to {hhmm(d.fastest.end_slot)} UTC · the gold block</> : "no leg measured yet"}</Hero>
         </div>
-        <div style={{ ...tile, padding: `${u(14)} ${u(32)} ${u(10)}`, gap: u(2) }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: u(30) }}><div><div style={{ ...label, fontSize: u(19) }}>The day’s runs · nautical miles sailed in 24 hours</div><div style={{ fontFamily: SANS, fontSize: u(15), color: K.muted, marginTop: u(3) }}>sailed along the track · YB’s 24 h column is miles made good toward the finish, the same or a little less</div></div>
+        <div style={{ ...tile, padding: `${u(14)} ${u(32)} ${u(10)}`, gap: u(2) }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: u(30) }}><div><div style={{ ...label, fontSize: u(19) }}>The day’s runs · nautical miles sailed in 24 hours</div><div style={{ fontFamily: SANS, fontSize: u(15), color: K.muted, marginTop: u(3) }}>sailed along the track · YB’s 24 h column is miles made good toward the finish, the same or a little less{d.cols.some(isStopped) ? " · a boat that is not moving is left out of the fleet average" : ""}</div></div>
           <div style={{ display: "flex", gap: u(28), alignItems: "center", fontFamily: SANS, fontSize: u(16), color: K.muted, whiteSpace: "nowrap" }}>
             <span><span style={{ color: K.gain }}>▲</span><span style={{ color: K.loss }}>▼</span> miles more or fewer than the day before</span>
             <span><span style={{ display: "inline-block", width: u(16), height: u(14), background: K.gold, verticalAlign: "middle" }} /> the fastest 4 hours</span>

@@ -44,9 +44,18 @@ export function columns(now: SlideBoat[], before: SlideBoat[], legs: SlideLeg[],
   const key = (c: Column) => (c.run == null ? -1 : c.run);
   return cols.sort((a, c) => (a.stale !== c.stale ? (a.stale ? 1 : -1) : key(c) - key(a) || a.place - c.place));
 }
+/** A boat that is not moving: its newest measured 4-hour leg is under 0.8 nm, which is 0.2 kt. A boat stopped at a mark or in a
+ *  marina reports a few metres of wander (Guy deBoer at Lanzarote on 18 Sep 2026: 0.28 nm in four hours), while a boat becalmed
+ *  still drifts with the current, so the line is drawn low enough that weather alone never crosses it. Its own run, bar and place
+ *  are its own and stay; it is the FLEET's average that leaves it out, for as long as it lies there and not a report longer. */
+const STOPPED_KN = 0.2;
+export function isStopped(c: Column): boolean {
+  const newest = [...c.legs].reverse().find(l => l != null);
+  return !c.stale && newest != null && newest.kt < STOPPED_KN;
+}
 const counted = (c: Column) => !c.stale && c.run != null && complete(c.legs);
 export const biggestRun = (cols: Column[]): Column | null => cols.filter(counted).sort((a, c) => c.run! - a.run!)[0] ?? null;
-export function fleetAverage(cols: Column[]): number | null { const r = cols.filter(counted).map(c => c.run!); return r.length ? r.reduce((a, c) => a + c, 0) / r.length : null; }
+export function fleetAverage(cols: Column[]): number | null { const r = cols.filter(c => counted(c) && !isStopped(c)).map(c => c.run!); return r.length ? r.reduce((a, c) => a + c, 0) / r.length : null; }
 export function fastestLeg(legs: SlideLeg[], boats: SlideBoat[], asOf: string): { team_id: number; first: string; kt: number; end_slot: string } | null {
   const end = ms(asOf), names = new Map(boats.map(b => [b.team_id, first(b)]));
   const best = legs.filter(l => l.speed_kn != null && names.has(l.team_id) && ms(l.end_slot) > end - DAY && ms(l.end_slot) <= end).sort((a, c) => c.speed_kn! - a.speed_kn!)[0];

@@ -1,6 +1,6 @@
 // site/__tests__/slide.test.ts — the daily slide's numbers and sentences (lib/slide.ts). The cases are the fleet of 17 Sep 2026 1600 UTC.
 import { describe, it, expect } from "vitest";
-import { sixLegs, columns, biggestRun, fleetAverage, fastestLeg, leaderLine, ghostLine, scaleMax, runChange } from "../lib/slide";
+import { sixLegs, columns, biggestRun, fleetAverage, fastestLeg, leaderLine, ghostLine, scaleMax, runChange, isStopped } from "../lib/slide";
 import { placeGroups } from "../lib/moves";
 
 const AS_OF = "2026-09-17T16:00:00+00:00", H4 = 4 * 3600 * 1000, T = new Date(AS_OF).getTime();
@@ -75,6 +75,38 @@ describe("a boat that missed the report", () => {
     expect(fleetAverage(cols)).toBe(100);
     expect(scaleMax(cols)).toBe(190);                                            // but the chart's scale holds its bar
     expect(scaleMax([...cols, { run: 200 } as never])).toBe(200);
+  });
+});
+
+describe("a boat that is not moving", () => {
+  // 18 Sep 2026: Guy deBoer lay still at Lanzarote from about 17:50 UTC (his 4-hour legs 20.6 nm, 9.4 nm, then 0.28 nm; his tracker
+  // went to ten-minute reports, which is what these do when a boat stops). His 24-hour run keeps falling toward nought for as long
+  // as he lies there, so counting him in the fleet's average says the fleet slowed when it did not. The owner's rule of 18 Sep:
+  // leave such a boat out of the average for as long as it is not moving, and count it again the moment it sails.
+  const moving = (team_id: number, nm: number) => legs(team_id, [nm / 6, nm / 6, nm / 6, nm / 6, nm / 6, nm / 6]);
+  const stops = legs(5, [20.6, 20.6, 20.6, 20.6, 9.4, 0.28]);                      // the newest leg last: 0.07 kt
+  const fleet = [boat(6, "Damien", 1, 150), boat(12, "Henry", 2, 120), boat(5, "Guy", 3, 92.3)];
+  const cols = columns(fleet, [], [...moving(6, 150), ...moving(12, 120), ...stops], AS_OF);
+
+  it("is the boat whose newest 4-hour leg is under a mile in four hours, whatever its 24-hour run still says", () => {
+    expect(cols.filter(isStopped).map(c => c.first)).toEqual(["Guy"]);
+    expect(isStopped(cols.find(c => c.first === "Damien")!)).toBe(false);
+  });
+  it("is left out of the fleet's average, so the average is of the boats that are sailing", () => {
+    expect(fleetAverage(cols)).toBe(135);                                          // (150 + 120) / 2, not (150 + 120 + 92.3) / 3 = 120.8
+  });
+  it("counts again the moment it sails, without anything being reset", () => {
+    const sails = [...moving(6, 150), ...moving(12, 120), ...legs(5, [20.6, 9.4, 0.28, 0.3, 4.0, 18.0])];
+    const back = columns([boat(6, "Damien", 1, 150), boat(12, "Henry", 2, 120), boat(5, "Guy", 3, 52.6)], [], sails, AS_OF);
+    expect(back.filter(isStopped)).toEqual([]);
+    expect(fleetAverage(back)).toBeCloseTo((150 + 120 + 52.6) / 3, 6);             // its own thin run is counted again, as it should be
+  });
+  it("keeps its own run, its bar and its place: only the fleet's figure leaves it out", () => {
+    const guy = cols.find(c => c.first === "Guy")!;
+    expect([guy.run, guy.place, guy.stale]).toEqual([92.3, 3, false]);
+  });
+  it("says nothing about a boat whose newest leg was not measured", () => {
+    expect(isStopped(columns([boat(16, "Andrea", 3, 158, { stale: true })], [], [], AS_OF)[0])).toBe(false);
   });
 });
 
