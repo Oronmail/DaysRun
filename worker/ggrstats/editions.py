@@ -10,11 +10,13 @@ the record, her nought of a run kept off the fleet's average (MOORED_RUN_NM)."""
 import bisect, statistics
 from datetime import datetime, timezone
 from . import perf
-from .grid import resample, window, slot_of, slot_time, gc_nm, bearing_deg, SLOT_S, SLOT_TOL_S
+from .grid import resample, window, slot_of, slot_time, gc_nm, bearing_deg, SLOT_TOL_S
 from .stats import detect_restart, RUN24_LIMIT_NM, LEG_LIMIT_KN
 
 DAY = 86400
 MOORED_RUN_NM = 10.0                 # under this in 24 hours a boat is not sailing: back in port, or stopped in the Chichester class
+RESTART_WINDOW_S = 7 * DAY           # NOR C.1.2 lets a boat return and start again only within seven days of the gun; later, a fix
+                                     # outside the marina after one inside it is an ARRIVAL (2022 held Damien Guillou to this window)
 
 def day_zero(start_at):
     """00:00 UTC of the start date: race day N is this plus N days (the site's rule: a race day is a UTC calendar date)."""
@@ -83,7 +85,7 @@ def running_best(slots, start_at, restart):
     out, best, t0 = [], (None, None), 0
     first_out = restart["first_out_at"] if restart else None
     for k in sorted(slots):
-        if first_out is not None and t0 == 0 and slots[k]["at"] >= first_out:
+        if first_out is not None and t0 == 0 and slot_time(k) >= first_out:      # the report's own hour, the one t0_at keys on
             best, t0 = (None, None), first_out
         if slots[k]["at"] >= max(start_at + DAY, t0):
             r = run_at(slots, k, t0)
@@ -94,8 +96,8 @@ def running_best(slots, start_at, restart):
 
 def prepare(fixes, start_at, ended_at=None, ended_how=None, line=None):
     """Everything one boat needs for a whole race, computed once: her fixes cut at the documented end (for a past fleet also
-    filled to the grid and measured on the 2026 line), the slots, the restart, the miles sailed as a running sum and the best run
-    at every slot. compute() calls this once per boat; each race day then costs a lookup. line None: this year's fleet, whose
+    filled to the grid and measured on the 2026 line), the fixes she really sent, the slots, the restart (read off those reported
+    fixes, and only inside NOR C.1.2's seven days), the miles sailed as a running sum and the best run at every slot. compute() calls this once per boat; each race day then costs a lookup. line None: this year's fleet, whose
     fixes already carry YB's own distance to finish and whose grid is the live site's — no slot of 2026 is ever filled."""
     fx = cut(sorted(fixes, key=lambda f: f["at"]), ended_at)
     if line is not None:
@@ -105,7 +107,10 @@ def prepare(fixes, start_at, ended_at=None, ended_how=None, line=None):
     cum = [0.0]
     for a, b in zip(ks, ks[1:]):
         cum.append(cum[-1] + gc_nm(slots[a]["lat"], slots[a]["lon"], slots[b]["lat"], slots[b]["lon"]))
-    restart, real = detect_restart(fx, start_at), [f for f in fx if not f.get("interp")]
+    real = [f for f in fx if not f.get("interp")]                        # the restart is read off what the tracker sent, never off a filled slot
+    restart = detect_restart(real, start_at)
+    if restart and restart["first_out_at"] > start_at + RESTART_WINDOW_S:
+        restart = None                                                   # a finisher coming home is not a boat starting again
     return {"fixes": fx, "real": real, "real_ats": [f["at"] for f in real], "slots": slots, "ks": ks, "ats": [slots[k]["at"] for k in ks],
             "cum": cum, "restart": restart, "best": running_best(slots, start_at, restart), "ended_at": ended_at, "ended_how": ended_how,
             "filled": sum(1 for f in slots.values() if f.get("interp"))}
@@ -147,7 +152,7 @@ def boat_day(boat, start_at, T, course_nm):
            "fix_at": None, "lat": None, "lon": None, "togo_nm": None, "mg_nm": None, "sailed_nm": None, "run24_nm": None,
            "best24_nm": best[0], "best24_at": best[1], "place": None, "restarted": t0 > 0, "ended_at": boat["ended_at"]}
     i = bisect.bisect_right(boat["real_ats"], T + SLOT_TOL_S) - 1
-    if i >= 0:
+    if i >= 0 and boat["real"][i]["at"] >= start_at:                     # never a position from before the gun, as resample has it
         row.update(fix_at=boat["real"][i]["at"], lat=boat["real"][i]["lat"], lon=boat["real"][i]["lon"])
     if finished:
         row.update(togo_nm=0.0, mg_nm=course_nm)
@@ -171,11 +176,13 @@ def assign_places(rows):
     return rows
 
 def day_legs(slots, T, t0=0):
-    """The six 4-hour legs of the 24 hours to the report at T that have a fix at both ends: {end_at, cmg_deg}, for the wind."""
+    """The six 4-hour legs of the 24 hours to the report at T that have a fix at both ends: {end_at, cmg_deg}, for the wind. Two
+    consecutive slots may stand 3 h 20 min to 4 h 40 min apart, each fix being up to 20 minutes off its own hour; perf.all_legs
+    calls a leg a leg only between 3.5 and 4.5 hours, and the wind bands use that same gate so that no leg counts here and not there."""
     k, out = slot_of(T), []
     for j in range(k - 5, k + 1):
         a, b = slots.get(j - 1), slots.get(j)
-        if a and b and a["at"] >= t0:
+        if a and b and a["at"] >= t0 and 3.5 <= (b["at"] - a["at"]) / 3600.0 <= 4.5:
             out.append({"end_at": slot_time(j), "cmg_deg": bearing_deg(a["lat"], a["lon"], b["lat"], b["lon"])})
     return out
 
@@ -251,11 +258,16 @@ def crossings(fixes, start_at, ended_how, ended_at, togo_marks, milestones, unti
                         out[name] = t
                     break
             continue
-        key = "lat" if kind == "lat" else "lon"
         for p, q in zip(fx, fx[1:]):
-            crossed = (p[key] > value >= q[key]) if kind == "lat" else (p[key] < value <= q[key])
-            if crossed and guard(q["lat"], q["lon"]):
-                t = _interp(p["at"], p[key], q["at"], q[key], value)
+            if kind == "lat":
+                hit = p["lat"] > value >= q["lat"]
+                frac = (value - p["lat"]) / (q["lat"] - p["lat"]) if hit else 0.0
+            else:
+                east, ahead = _wrap(q["lon"] - p["lon"]), _wrap(value - p["lon"])   # the short way round: +179 to -179 is two degrees EAST
+                hit = east > 0 and 0 < ahead <= east                                # -179 to +179 is two degrees west and crosses nothing eastbound
+                frac = ahead / east if hit else 0.0
+            if hit and guard(q["lat"], q["lon"]):
+                t = p["at"] + frac * (q["at"] - p["at"])
                 if not late(t):
                     out[name] = t
                 break
@@ -269,7 +281,7 @@ def compute(fixes_by_team, ends, start_at, line, course_nm, days, winds, on_this
     togo_marks MUST be on the same scale as the fixes, and the caller owns that choice. A fleet measured on the line
     (on_this_line True) takes `course.mark_togo(nodes, config.MARKS, observed={})` — the line's OWN figure at each mark, because
     those boats' distances come from that same projection; at Lanzarote the line reads about 8 nm more than YB's observed
-    24,469.5, and mixing the two cost Guy deBoer a rounding he had made. This year's fleet (on_this_line False, YB's own
+    24,469.5, and mixing the two cost Guy deBoer a rounding already made. This year's fleet (on_this_line False, YB's own
     distances) takes `course.mark_togo(nodes, config.MARKS)`, YB's observed figure where one is known.
 
     notes says what the two rules of a past fleet added and left out, for the run's log: filled_slots, the slots fill_slots

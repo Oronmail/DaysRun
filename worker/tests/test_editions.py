@@ -127,6 +127,13 @@ def test_an_impossible_leg_makes_no_run():
     r = editions.boat_day(P(fx), START, START + 12 * SLOT_S, COURSE_NM)
     assert r["fresh"] and r["run24_nm"] is None
 
+def test_a_boat_silent_since_before_the_gun_shows_no_position():
+    """resample drops a fix before the start; the last-position lookup must too, or a boat whose tracker died on the quay would
+    lie on the page at the spot she was moored."""
+    fx = [{"at": START - (i + 1) * SLOT_S, "lat": 46.5, "lon": -1.79, "dtf": 1} for i in range(4)]
+    r = editions.boat_day(P(fx), START, START + 3 * SLOT_S, COURSE_NM)
+    assert r["racing"] and not r["fresh"] and r["lat"] is None and r["fix_at"] is None
+
 def test_the_race_ends_at_the_documented_date_not_the_last_fix():
     ended = START + 12 * SLOT_S + 3600                                       # the race ended on day 2 (retired); the tracker goes on for five days
     r = editions.boat_day(P(straight(START, 20.0, 30), ended_at=ended, ended_how="retired"), START, START + 20 * SLOT_S, COURSE_NM)
@@ -219,6 +226,18 @@ def test_van_den_heede_has_a_day_s_run_inside_the_three_hourly_week_of_2018():
 
 # ---------------------------------------------------------------- the restart
 
+def test_the_restart_is_read_off_what_the_tracker_sent_not_off_a_filled_slot():
+    """Amendment 4: the restart is what the tracker reported. Fed the filled list instead, the boat leaves again at the slot time
+    (a moment nothing was ever sent from), and every figure that counts from the restart moves with it."""
+    k = slot_of(START + 4 * SLOT_S)                                                           # 2026-09-07 04:00 UTC, sixteen hours after the gun
+    home = {"lat": config.LES_SABLES[0], "lon": config.LES_SABLES[1]}
+    fx = ([{"at": START + i * SLOT_S + 7, "lat": 46.5 - i * 20.0 / 60.0, "lon": -1.79, "dtf": 1} for i in range(3)]
+          + [{"at": slot_time(k) - 5400, **home, "dtf": 1}, {"at": slot_time(k) - 1800, **home, "dtf": 1}]
+          + [{"at": slot_time(k) + 1800 + i * SLOT_S, "lat": 46.6 + i * 20.0 / 60.0, "lon": -1.79, "dtf": 1} for i in range(6)])
+    b = P(fx)
+    assert b["slots"][k]["interp"]                                                            # the hour itself was filled, not reported
+    assert b["restart"]["first_out_at"] == slot_time(k) + 1800                                # 04:30, the fix she really sent
+
 def test_a_restarted_boat_counts_from_the_restart():
     """NOR C.1.2: the boat may come back and go again, and her race time is not reset — but her miles sailed and her runs
     are counted from the restart, as the live site does (stats.detect_restart)."""
@@ -235,6 +254,47 @@ def test_a_restarted_boat_counts_from_the_restart():
     assert editions.fleet_day({1: r}, T, START, None)["straight_pct"] is None                  # miles since the restart over miles made good since the gun
 
 # ---------------------------------------------------------------- the fleet's day
+
+def test_the_record_resets_at_the_report_the_restart_counts_from():
+    """t0_at keys on the report's own time, so the running best must key on the same. Keyed on the fix that carries the slot
+    instead, a report in the twenty minutes before the restart would show figures counted from the gun beside a best run already
+    wiped for a restart that had not happened yet."""
+    home = {"lat": config.LES_SABLES[0], "lon": config.LES_SABLES[1]}
+    fx = ([{"at": START + i * SLOT_S + 7, "lat": 46.5 - i * 20.0 / 60.0, "lon": -1.79, "dtf": 1} for i in range(7)]
+          + [{"at": START + (7 + i) * SLOT_S + 7, "lat": 44.5 + (i + 1) * 20.0 / 60.0, "lon": -1.79, "dtf": 1} for i in range(5)]
+          + [{"at": START + (12 + i) * SLOT_S + 7, **home, "dtf": 1} for i in range(3)]
+          + [{"at": START + (15 + i) * SLOT_S + 300, "lat": 46.6 + i * 20.0 / 60.0, "lon": -1.79, "dtf": 1} for i in range(6)])
+    b = P(fx)
+    assert b["restart"]["first_out_at"] == START + 15 * SLOT_S + 300                          # five minutes past the hour
+    assert editions.t0_at(b, START + 15 * SLOT_S) == 0                                        # the report is before it: figures count from the gun
+    assert round(editions.best_so_far(b, slot_of(START + 15 * SLOT_S))[0]) == 120             # ... and so does the record
+    assert editions.best_so_far(b, slot_of(START + 16 * SLOT_S)) == (None, None)              # the next report is after it: the count starts again
+
+def test_no_finisher_is_read_as_a_restart():
+    """NOR C.1.2 gives a boat seven days from the gun to come back and start again; the worker's own detect_restart says so, and
+    the 2022 race held Damien Guillou to it. Beyond that window a fix outside the marina after a fix inside it is an arrival, not
+    a restart, and must not be read as one."""
+    for race, ids in (("ggr2018", (8, 68)), ("ggr2022", (11, 7))):
+        for tid in ids:
+            assert prepared(race)[tid]["restart"] is None, (race, tid)
+
+def test_a_finishers_arrival_does_not_take_away_the_record_she_set():
+    """One fix 1.8 nm seaward two minutes before Kirsten Neuschäfer's finish makes the bare rule fire: the last fix inside the
+    mile becomes a 'return' and the seaward one a 'restart'. Every row from that instant would then lose its best run, and the
+    fleet row would hand the race's record to another boat on every later day. The seven-day window stops it."""
+    start = editions_data.EDITIONS["ggr2022"]["start"]
+    row = next(r for r in editions_data.TEAMS["ggr2022"] if r["id"] == 7)
+    seaward = {"at": row["ended_at"] - 120, "lat": 46.4964, "lon": -1.8383, "dtf": 100}       # 1.8 nm west of the marina
+    forced = editions.cut(load_sample("ggr2022")[7], row["ended_at"]) + [seaward]
+    assert stats.detect_restart(sorted(forced, key=lambda f: f["at"]), start) is not None     # the bare rule does fire
+    b = editions.prepare(forced, start, row["ended_at"], row["ended_how"], LINE26)
+    assert b["restart"] is None                                                               # 236 days after the gun: an arrival
+    assert editions.best_so_far(b, slot_of(row["ended_at"]))[0] is not None                   # her record stands
+
+def test_damien_guillous_restart_is_inside_the_window_and_still_stands():
+    b = prepared("ggr2022")[4]; start = editions_data.EDITIONS["ggr2022"]["start"]
+    assert U("2022-09-10T16:00:00") <= b["restart"]["first_out_at"] < U("2022-09-10T16:05:00")   # six days after the gun, inside NOR C.1.2
+    assert editions.boat_day(b, start, editions.day_zero(start) + 12 * 86400, COURSE26_NM)["restarted"]
 
 def test_places_and_the_fleet_row():
     T = START + 12 * SLOT_S
@@ -272,6 +332,16 @@ def test_a_moored_boat_is_not_in_the_mean_run():
     d = editions.fleet_day(rows, T, START, None)
     assert d["racing"] == 3 and d["runs_n"] == 2 and round(d["mean_run_nm"]) == 135 and d["best_run_team_id"] == 1
 
+def test_a_leg_the_performance_page_would_drop_is_not_classed_for_the_wind():
+    """Two consecutive slots can stand 3 h 20 min to 4 h 40 min apart, since each fix may be 20 minutes either side of its hour.
+    perf.all_legs calls a leg a leg only between 3.5 and 4.5 hours, and the wind bands must use the same gate, or a leg would
+    count on this page and not on the Performance page."""
+    fx = straight(START, 20.0, 12)
+    for i, off in ((8, 1200), (9, -1200), (10, 1200)):                                        # each fix still inside its own slot's 20 minutes
+        fx[i]["at"] = slot_time(slot_of(fx[i]["at"])) + off
+    legs = editions.day_legs(P(fx)["slots"], START + 12 * SLOT_S)
+    assert [l["end_at"] for l in legs] == [START + j * SLOT_S for j in (7, 8, 11, 12)]         # the 3 h 20 leg and the 4 h 40 leg are both gone
+
 def test_wind_is_classed_with_the_sites_own_bands():
     b = P(straight(START, 20.0, 12))                                                          # course made good 180 (south)
     T = START + 12 * SLOT_S
@@ -300,6 +370,15 @@ def test_the_first_eastbound_crossing_stands_even_when_the_boat_turns_back():
     x = editions.crossings(fx, START, None, None, TOGO26, editions_data.MILESTONES)
     assert abs(x["Cape of Good Hope"] - (START + (18.4731 - 16.0) / 4.0 * SLOT_S)) < 1
 
+def test_crossing_the_antimeridian_westbound_is_not_an_eastbound_crossing_of_anything():
+    """Read without care, a pair from 179°W to 179°E reads as a boat going east past every meridian between them, the Cape of Good
+    Hope's among them. It is two degrees WEST. The rule must measure the short way round, so that it does not depend on the true
+    crossing happening to come first and end the search."""
+    lons = [-179.0, 179.0, 16.0, 20.0]                                                        # west across 180, then east past the cape
+    fx = [{"at": START + i * SLOT_S, "lat": -35.0, "lon": lon, "dtf": 1} for i, lon in enumerate(lons)]
+    x = editions.crossings(fx, START, None, None, TOGO26, editions_data.MILESTONES)
+    assert abs(x["Cape of Good Hope"] - (START + 2 * SLOT_S + (18.4731 - 16.0) / 4.0 * SLOT_S)) < 1
+
 def test_nothing_after_the_pages_own_clock():
     fx = [{"at": START + i * 1200, "lat": 46.0 - i * 0.5, "lon": -1.79, "dtf": 1} for i in range(6)]   # 45.0 crossed at START + 2400
     ms = [("Forty-five", "lat", 45.0, lambda la, lo: True)]
@@ -308,7 +387,7 @@ def test_nothing_after_the_pages_own_clock():
     assert editions.crossings(fx, START, None, None, {}, ms)["Forty-five"] == START + 2400
 
 # YB's own checkpoints: 2411 is the Hobart gate and 4200 Cape Horn on both courses; 620 is the 2022 Canary checkpoint (Simon Curwen
-# stopped there 16 nm from the Lanzarote mark, Guy deBoer while he lay at Marina Rubicón).
+# stopped there 16 nm from the Lanzarote mark, Guy deBoer while lying at Marina Rubicón).
 SPLITS = (("ggr2022", 11, "Simon Curwen", 2411, "Hobart"), ("ggr2022", 7, "Kirsten Neuschafer", 4200, "Cape Horn"),
           ("ggr2018", 8, "Jean-Luc Van Den Heede", 4200, "Cape Horn"), ("ggr2018", 8, "Jean-Luc Van Den Heede", 2411, "Hobart"),
           ("ggr2022", 11, "Simon Curwen", 620, "Lanzarote"), ("ggr2022", 14, "Guy deBoer", 620, "Lanzarote"))
@@ -332,8 +411,8 @@ def test_2018_and_2022_milestones_agree_with_yb_splits_within_six_hours():
 
 def test_the_hobart_crossing_is_the_gate_itself_not_twelve_miles_past_it():
     """The ruling, pinned: Simon Curwen's distance to finish at the gate (0.4 nm from it, 24 Dec 02:00) reads the gate's own, so
-    with no margin his crossing falls within two hours of YB's split. Read 12 nm beyond the gate instead and it falls nine hours
-    late, on the far side of midnight — he crossed Storm Bay at 5 knots and lay there half a day."""
+    with no margin the crossing falls within two hours of YB's split. Read 12 nm beyond the gate instead and it falls nine hours
+    late, on the far side of midnight — Simon Curwen crossed Storm Bay at 5 knots and lay there half a day."""
     row = next(r for r in editions_data.TEAMS["ggr2022"] if r["id"] == 11)
     x, split = past_crossings("ggr2022", 11), zeg_stop("ggr2022", "Simon Curwen", 2411)
     assert abs(x["Hobart"] - split) < 2 * 3600, ("ours " + hhmm(x["Hobart"]), "YB " + hhmm(split))
@@ -342,8 +421,8 @@ def test_the_hobart_crossing_is_the_gate_itself_not_twelve_miles_past_it():
     assert late["Hobart"] - x["Hobart"] > 6 * 3600
 
 def test_guy_deboer_2022_rounded_lanzarote_the_evening_before_he_went_aground():
-    """He did the film drop at Marina Rubicón on the evening of 17 September and was on the rocks of Fuerteventura at 04:45 the
-    next morning. Measured on the line's own Lanzarote figure his rounding is there; measured on YB's observed figure, which is
+    """Guy deBoer did the film drop at Marina Rubicón on the evening of 17 September and was on the rocks of Fuerteventura at
+    04:45 the next morning. Measured on the line's own Lanzarote figure the rounding is there; measured on YB's observed figure, which is
     about 8 nm less than the line reads at the mark, it was not — the two scales must not be mixed."""
     row = next(r for r in editions_data.TEAMS["ggr2022"] if r["id"] == 14)
     x = past_crossings("ggr2022", 14)
@@ -352,7 +431,7 @@ def test_guy_deboer_2022_rounded_lanzarote_the_evening_before_he_went_aground():
                               "the line's Lanzarote", round(TOGO26_LINE["Lanzarote"], 1))
     assert U("2022-09-17T12:00:00") < x["Lanzarote"] < U("2022-09-18T04:45:00"), hhmm(x["Lanzarote"])
     assert x["Lanzarote"] <= row["ended_at"] and "Equator" not in x
-    # He lay at the marina from 21:00 with his distance to finish 0.3 m above the mark's own, so the rounding is recorded as he left.
+    # The boat lay at the marina from 21:00 with her distance to finish 0.3 m above the mark's own: the rounding is recorded as she left.
     assert abs(x["Lanzarote"] - zeg_stop("ggr2022", "Guy deBoer", 620)) < 6 * 3600
 
 def test_deboer_2022_is_racing_at_the_report_before_the_grounding_and_gone_after_it():
@@ -385,6 +464,28 @@ def test_compute_counts_what_it_added_and_what_it_left_out():
     assert out["notes"]["filled_slots"] > 0 and out["notes"]["moored_runs"] > 0
     assert out["notes"]["interp_reports"] == 0                                                # 00:00 lies on the 3-hour rhythm and on the grid alike
     assert editions.compute(boats, {}, START, LINE, COURSE_NM, days=[1], winds={}, on_this_line=False)["notes"]["filled_slots"] == 0
+
+def test_compute_stands_up_to_an_empty_fleet_an_empty_day_list_and_a_boat_with_no_fix():
+    empty = editions.compute({}, {}, START, LINE, COURSE_NM, days=[1], winds={}, on_this_line=True)
+    assert len(empty["days"]) == 1 and empty["days"][0]["racing"] == 0 and empty["days"][0]["leader_team_id"] is None
+    assert empty["boat_days"] == [] and empty["notes"] == {"filled_slots": 0, "moored_runs": 0, "interp_reports": 0}
+    assert set(db.DAY_COLS) <= set(empty["days"][0])
+    none = editions.compute({1: straight(START, 20.0, 12)}, {}, START, LINE, COURSE_NM, days=[], winds={}, on_this_line=True)
+    assert none["days"] == [] and none["boat_days"] == []
+    silent = editions.compute({1: []}, {}, START, LINE, COURSE_NM, days=[1, 2], winds={}, on_this_line=True, togo_marks=TOGO26_LINE)
+    assert len(silent["boat_days"]) == 2 and all(r["racing"] and not r["fresh"] and r["lat"] is None for r in silent["boat_days"])
+    assert silent["milestones"] == [] and silent["days"][0]["median_mg_nm"] is None
+
+def test_a_retired_boat_has_no_finish_milestone():
+    fx = P(straight(START, 60.0, 4))["fixes"]
+    assert "Finish" not in editions.crossings(fx, START, "retired", START + 2 * SLOT_S, TOGO26_LINE, editions_data.MILESTONES)
+    assert editions.crossings(fx, START, "finished", START + 2 * SLOT_S, TOGO26_LINE, editions_data.MILESTONES)["Finish"] == START + 2 * SLOT_S
+
+def test_the_fill_boundary_is_grids_own_twenty_minutes():
+    t = slot_time(slot_of(START + 6 * SLOT_S))
+    at = lambda a, b: [{"at": t + a, "lat": 10.0, "lon": -20.0}, {"at": t + b, "lat": 11.0, "lon": -20.0}]
+    assert not any(f.get("interp") for f in editions.fill_slots(at(-1200, 2400)))             # 20 minutes out, so the fix still holds the slot
+    assert sum(1 for f in editions.fill_slots(at(-1201, 2399)) if f.get("interp")) == 1       # one second further and the slot is empty: fill it
 
 def test_compute_counts_the_reports_that_were_filled_rather_than_reported():
     out = editions.compute({1: three_hourly_off_the_slot(25)}, {}, START, LINE, COURSE_NM, days=[1, 2], winds={}, on_this_line=True)
