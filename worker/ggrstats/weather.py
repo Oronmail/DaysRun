@@ -43,3 +43,52 @@ def fetch_conditions(points, session=None, now=None):
                      "swell_period_s": mh["swell_wave_period"][j], "current_kn": None if cur_kmh is None else cur_kmh / 1.852,
                      "current_dir_deg": mh["ocean_current_direction"][j], "sst_c": mh["sea_surface_temperature"][j], "fetched_at": now})
     return rows
+
+ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
+
+class RetryableWeatherError(RuntimeError):
+    """Open-Meteo's archive fails in ways worth waiting out, not raising for hours: HTTP 429 or 5xx, a dropped connection
+    or timeout, a 200 whose body isn't JSON (seen 18 Sep 2026: 'Unexpected error while streaming data: timeoutReached'),
+    or Open-Meteo's own {"error": true, "reason": ...} shape inside a 200. Any other 4xx is left as raise_for_status()
+    makes it: a programming error must not be retried for hours."""
+
+def _archive_get(session, params):
+    try:
+        r = session.get(ARCHIVE, params=params, timeout=45, headers={"User-Agent": config.USER_AGENT})
+    except requests.RequestException as e:
+        raise RetryableWeatherError(f"archive request failed: {e}") from e
+    if r.status_code == 429 or r.status_code >= 500:
+        raise RetryableWeatherError(f"archive returned HTTP {r.status_code}")
+    r.raise_for_status()
+    try:
+        data = r.json()
+    except ValueError as e:
+        raise RetryableWeatherError(f"archive body was not JSON: {e}") from e
+    if isinstance(data, dict) and data.get("error"):
+        raise RetryableWeatherError(f"archive error: {data.get('reason')}")
+    return data if isinstance(data, list) else [data]
+
+def fetch_archive_wind(points, session=None, model="ecmwf_ifs", batch=20):
+    """Model wind at the end of past 4-hour legs, for the Past races page: Open-Meteo's ARCHIVE with one named model
+    pinned (default ecmwf_ifs) so every past fix comes from the same product and 'best match' can never silently mix
+    models — checked 18 Sep 2026, the archive answers for ocean positions of July 2018, January 2019 and 2022 with that
+    model. One call per UTC date; points go out in chunks of at most `batch` locations (the free tier hangs or 429s on
+    big multi-location calls) and rows come back in the order of `points`. A null in the model's answer for a point's
+    hour is still returned as a row, with wind_kt/wind_dir_deg of None, so that slot is stored and never re-asked."""
+    if not points:
+        return []
+    days = {datetime.fromtimestamp(p["slot_at"], timezone.utc).strftime("%Y-%m-%d") for p in points}
+    if len(days) != 1:
+        raise ValueError(f"fetch_archive_wind: one call is one UTC date, got {sorted(days)}")
+    day = days.pop(); session = session or requests.Session()
+    rows = []
+    for i in range(0, len(points), batch):
+        chunk = points[i:i + batch]
+        res = _archive_get(session, {"latitude": ",".join(f"{p['lat']:.3f}" for p in chunk), "longitude": ",".join(f"{p['lon']:.3f}" for p in chunk),
+                                     "hourly": "wind_speed_10m,wind_direction_10m", "wind_speed_unit": "kn", "models": model,
+                                     "start_date": day, "end_date": day, "timezone": "UTC"})
+        for p, r in zip(chunk, res):
+            j = hour_index(r["hourly"]["time"], p["slot_at"])
+            rows.append({"team_id": p["team_id"], "slot_at": p["slot_at"], "wind_kt": r["hourly"]["wind_speed_10m"][j],
+                         "wind_dir_deg": r["hourly"]["wind_direction_10m"][j], "model": model})
+    return rows
