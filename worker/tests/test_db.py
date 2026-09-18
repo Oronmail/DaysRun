@@ -87,3 +87,35 @@ def test_verify_knows_the_audited_values(conn, capsys):
     assert run.cmd_verify(conn, "ggr2026", 1789516800, str(FIX / "golden.snap.json")) == 0
     out = capsys.readouterr().out
     assert "mismatches: 0" in out and "audited" in out
+
+
+def test_a_leaderboard_tag_without_teams_is_skipped_and_the_rest_stored(conn):
+    """18 Sep 2026, 21:20 UTC: YB added a third tag to ggr2026's leaderboard that carries no `teams` key at all, and every worker
+    run died on it (KeyError: 'teams') at the capture step, so the site stopped taking new positions. A tag we cannot read is
+    skipped; the boats in the tags we can read are stored."""
+    from ggrstats import db
+    setup = json.load(open(FIX / "RaceSetup.20260916.json"))
+    db.upsert_race(conn, "ggr2026", setup); db.upsert_teams(conn, "ggr2026", setup); conn.commit()
+    lb = json.load(open(FIX / "Leaderboard.20260915T2200.json"))
+    tags = lb["tags"]
+    lb["tags"] = [tags[0], {"id": 99, "type": "x"}, *tags[1:]]                       # the shape YB served that evening
+    db.insert_leaderboard(conn, "ggr2026", 1789513200, lb)
+    conn.commit()
+    stored = conn.execute("select count(*) from leaderboard_snap where race_key='ggr2026'").fetchone()[0]
+    assert stored == sum(len(t["teams"]) for t in tags)
+    db.insert_leaderboard(conn, "ggr2026", 1789513200, {"tags": [{"id": 1, "type": "x"}]})       # nothing readable at all: no row, no error
+    conn.commit()
+    assert conn.execute("select count(*) from leaderboard_snap where race_key='ggr2026'").fetchone()[0] == stored
+
+
+def test_a_zegments_tag_without_teams_is_skipped(conn):
+    """The same shape in the splits feed, which is read in the same breath by `capture`."""
+    from ggrstats import db
+    setup = json.load(open(FIX / "RaceSetup.20260916.json"))
+    db.upsert_race(conn, "ggr2026", setup); db.upsert_teams(conn, "ggr2026", setup); conn.commit()
+    zeg = json.load(open(FIX / "zegments.20260915T2159.json"))
+    before = sum(len(t.get("segments", {})) for tag in zeg["tags"] for t in tag["teams"])
+    zeg["tags"] = [*zeg["tags"], {"id": 99, "type": "x"}]
+    db.upsert_splits(conn, "ggr2026", zeg)
+    conn.commit()
+    assert conn.execute("select count(*) from split where race_key='ggr2026'").fetchone()[0] == before

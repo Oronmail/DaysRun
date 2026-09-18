@@ -55,10 +55,19 @@ def load_fixes(conn, key):
         out.setdefault(tid, []).append({"at": int(at), "lat": lat, "lon": lon, "dtf": dtf})
     return out
 
+def _teams(tag, feed):
+    """The boats of one of YB's leaderboard tags. A tag without them is skipped, loudly but without stopping the run: on 18 Sep 2026
+    at 21:20 UTC YB added a third tag to ggr2026's leaderboard carrying no `teams` key, and every worker run died on it, so the site
+    took no new position for as long as it stood. What YB serves is theirs to change; nothing of ours may fall over because it did."""
+    if "teams" in tag:
+        return tag["teams"]
+    print(f"note: a {feed} tag (id {tag.get('id')}, type {tag.get('type')}) carries no teams and was skipped", flush=True)
+    return []
+
 def insert_leaderboard(conn, key, fetched_at, lb):
     rows = []
     for tag in lb.get("tags", []):
-        for t in tag["teams"]:
+        for t in _teams(tag, "leaderboard"):
             rows.append((key, ts(fetched_at), t["id"], t.get("rankR"), t.get("rankS"), t.get("dtf"), t.get("dmg"), t.get("d24"),
                          t.get("vmgR"), t.get("vmgS"), ts(t.get("eFinishR")), ts(t.get("eFinishS")), t.get("status"), t.get("old"), Jsonb(t)))
     conn.cursor().executemany("""insert into leaderboard_snap values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) on conflict do nothing""", rows)
@@ -67,7 +76,7 @@ def upsert_splits(conn, key, zeg):
     idx = {c["id"]: c for c in zeg["course"]}
     rows = []
     for tag in zeg["tags"]:
-        for t in tag["teams"]:
+        for t in _teams(tag, "zegments"):
             for seg in t.get("segments", {}).values():
                 c = idx.get(seg["courseNodeId"], {})
                 rows.append((key, t["markerNo"], seg["courseNodeId"], c.get("name"), c.get("index"),
