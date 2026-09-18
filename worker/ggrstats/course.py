@@ -28,6 +28,26 @@ def _cumulative(nodes):
 def course_length_nm(nodes):
     return _cumulative(nodes)[-1]
 
+def _nearest(nodes, lat, lon, lo, hi):
+    """(leg index, fraction along it) of the point of legs `lo` to `hi - 1` nearest (lat, lon): flat earth centred on the
+    position, fine for finding the nearest leg over a span this short. A tie goes to the earlier leg, so a search that
+    starts further back than it needs to (mark_togo's own leg, Line.togo's `back`) never gets pulled forward by it. Shared
+    by `mark_togo` (mark-order search, monotonic `lo`) and `Line.togo` (fix-order search, a small window around `i0`), so
+    the nearest-leg rule is written once."""
+    k, best = math.cos(math.radians(lat)), None
+    for i in range(lo, hi):
+        a, b = nodes[i], nodes[i + 1]
+        ax, ay = _wrap(a["lon"] - lon) * k, a["lat"] - lat
+        bx, by = _wrap(b["lon"] - lon) * k, b["lat"] - lat
+        dx, dy = bx - ax, by - ay
+        t = 0.0 if dx == dy == 0 else max(0.0, min(1.0, (-ax * dx - ay * dy) / (dx * dx + dy * dy)))
+        d = math.hypot(ax + t * dx, ay + t * dy)
+        if best is None or d < best[0]:
+            best = (d, i, t)
+    if best is None:
+        raise ValueError(f"no leg in range [{lo}, {hi})")
+    return best[1], best[2]
+
 def mark_togo(nodes, marks, observed=None):
     """{mark name: distance to finish in nm}. Each mark is looked for from the previous mark's leg onward, so that the start
     and the finish (the same water) and the way into and out of Storm Bay are never confused. The last mark is the finish: 0.
@@ -36,17 +56,7 @@ def mark_togo(nodes, marks, observed=None):
     cum = _cumulative(nodes)
     total, start, out = cum[-1], 0, {}
     for name, lat, lon in marks[:-1]:
-        k, best = math.cos(math.radians(lat)), None
-        for i in range(start, len(nodes) - 1):
-            a, b = nodes[i], nodes[i + 1]
-            ax, ay = _wrap(a["lon"] - lon) * k, a["lat"] - lat             # flat earth centred on the mark, fine for finding the nearest leg
-            bx, by = _wrap(b["lon"] - lon) * k, b["lat"] - lat
-            dx, dy = bx - ax, by - ay
-            t = 0.0 if dx == dy == 0 else max(0.0, min(1.0, (-ax * dx - ay * dy) / (dx * dx + dy * dy)))
-            d = math.hypot(ax + t * dx, ay + t * dy)
-            if best is None or d < best[0]:
-                best = (d, i, t)
-        _, i, t = best
+        i, t = _nearest(nodes, lat, lon, start, len(nodes) - 1)
         start = i
         out[name] = observed.get(name, total - (cum[i] + t * (cum[i + 1] - cum[i])))
     out[marks[-1][0]] = 0.0
@@ -64,3 +74,15 @@ def next_mark(min_dtf_nm, marks, togo, observed=None):
 def order(name):
     """A mark's place in the course, for telling forward from backward; -1 for a name that is not a mark."""
     return next((i for i, m in enumerate(config.MARKS) if m[0] == name), -1)
+
+class Line:
+    """YB's course as a polyline with its cumulative length, for measuring any point's distance to finish on THIS course: the
+    past fleets sailed other courses, and YB's own figure for them is on those. The search runs forward from the leg the boat
+    was on last time (back=3 legs, ahead=40), so a boat that turns back to port or crosses Storm Bay twice stays where it is."""
+    def __init__(self, nodes):
+        self.nodes = nodes
+        self.cum = _cumulative(nodes)
+        self.total_nm = self.cum[-1]
+    def togo(self, lat, lon, i0=0, back=3, ahead=40):
+        i, t = _nearest(self.nodes, lat, lon, max(0, i0 - back), min(len(self.nodes) - 1, i0 + ahead))
+        return self.total_nm - (self.cum[i] + t * (self.cum[i + 1] - self.cum[i])), i
