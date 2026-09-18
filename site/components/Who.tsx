@@ -16,3 +16,7 @@ export function Who({ b, sub = true }: { b: BoatStat; sub?: boolean }) {
     {b.restart_at && <div className="mont" style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.6, color: "var(--graphite)" }}>RESTARTED {dayMon(b.restart_at).toUpperCase()} AFTER REPAIRS</div>}
   </div>;
 }
+// An arrow for the course made good over a 4-hour leg: where the boat went (0° = north, up), never a heading.
+export function Course({ deg }: { deg: number }) {   // an arrow pointing where the boat went over the leg: 0 = north (up), 180 = south (down)
+  return <svg width="14" height="14" viewBox="0 0 16 16" style={{ verticalAlign: "-2px", marginLeft: 6 }} aria-hidden="true"><g transform={`rotate(${deg} 8 8)`}><path d="M8 14 L8 2 M8 2 L4.5 6 M8 2 L11.5 6" stroke="var(--ink)" strokeWidth="1.6" fill="none" strokeLinecap="round" /></g></svg>;
+}

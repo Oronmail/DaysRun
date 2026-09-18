@@ -78,3 +78,11 @@ main svg[viewBox] { max-width: 100%; height: auto; }
   .site-nav::-webkit-scrollbar { display: none; }
   .site-nav a { padding: 6px 0 6px; }
 }
+
+/* The ranking's width. From 1,700 px: every column, and the wind meter with its bar. Under 1,700 px the gap moves under the
+   distance to go and the meter keeps only its figure. Under 1,440 px the table no longer fits beside the chart (it used to run
+   under it at 1,280 px): it scrolls sideways inside its own box, as wide tables do on a phone. */
+.narrow-only { display: none; } .wide-only-inline { display: inline; }
+@media (max-width: 1699px) { .wide-only { display: none; } .wide-only-inline { display: none; } .narrow-only { display: block; }
+  .table-scroll table.data th, .table-scroll table.data td { padding-left: 5px; padding-right: 5px; } }   /* a pixel a side: at 1,440 px the ranking was 4 px too wide */
+@media (max-width: 1439px) { .table-scroll { overflow-x: auto; max-width: 100%; } }

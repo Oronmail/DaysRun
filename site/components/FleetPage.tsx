@@ -12,14 +12,16 @@ import { fleetView } from "@/lib/geo";
 import { TRACKER_URL } from "@/lib/text";
 import RaceChart from "@/components/RaceChart";
 import Duels from "@/components/Duels";
-import { latestFleet, boatStats, raceSetup, eventsRecent, dailyPlaces, duelsAt } from "@/lib/db";
+import { latestFleet, boatStats, raceSetup, eventsRecent, dailyPlaces, duelsAt, boatPerf } from "@/lib/db";
 import { nm, hhmm, dayMon, dayMonTime } from "@/lib/format";
 
 export type Win = "4h" | "24h" | "7d";
 const WINS: [Win, string, string][] = [["24h", "Last 24 h", "/"], ["4h", "Last 4 h", "/w/4h"], ["7d", "Last 7 days", "/w/7d"]];
 export default async function FleetPage({ window = "24h" }: { window?: Win }) {
   const fleet = await latestFleet();
-  const [boats, setup, events, days, duels] = await Promise.all([boatStats(fleet.as_of), raceSetup(), eventsRecent(6), dailyPlaces(), duelsAt(fleet.as_of)]);
+  const [boats, setup, events, days, duels, perf] = await Promise.all([boatStats(fleet.as_of), raceSetup(), eventsRecent(6), dailyPlaces(), duelsAt(fleet.as_of), boatPerf(fleet.as_of)]);
+  const wind = new Map(perf.map(p => [p.team_id, p]));
+  const rows = boats.map(b => ({ ...b, wind_ratio: wind.get(b.team_id)?.wind_ratio ?? null, wind_legs: wind.get(b.team_id)?.wind_legs ?? 0 }));   /* the ranking shows and sorts by speed for the wind */
   const lead = boats[0]; const best = boats.reduce((a, b) => (b.best24_nm > a.best24_nm ? b : a), boats[0]);
   const bestRun = boats.find(b => b.team_id === fleet.best_run24_team_id);
   const view = fleetView(boats, 358);
@@ -35,8 +37,8 @@ export default async function FleetPage({ window = "24h" }: { window?: Win }) {
     <div className="grid2">
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div className="rule-title"><div className="label">Ranking by distance to finish</div><div className="small only-desktop" style={{ fontStyle: "italic", marginRight: "auto", paddingLeft: 12 }}>select a skipper for the full analysis</div><div style={{ fontSize: 13 }}>{WINS.map(([w, label, href], i) => <span key={w}>{i > 0 && " · "}{w === window ? <strong>{label}</strong> : <Link href={href}>{label}</Link>}</span>)}</div></div>
-        <div className="only-desktop"><RankingTable boats={boats} window={window} /></div>
-        <div className="only-phone"><RankingList boats={boats} window={window} /></div>
+        <div className="only-desktop table-scroll"><RankingTable boats={rows} window={window} /></div>
+        <div className="only-phone"><RankingList boats={rows} window={window} /></div>
         <div className="small" style={{ fontSize: 12 }}>{BARS_LEGEND}{bestRun && ` · ${bestRun.team.first_name} sailed the fleet's longest run of the last 24 hours`}</div>
       </div>
       <aside style={{ display: "flex", flexDirection: "column", gap: 28 }}>
