@@ -43,6 +43,21 @@ def test_rank_change_vs_24h_ago():
     for tid, b in GB.items():
         assert then[tid] - now[tid] == b["chg"], tid
 
+def test_a_place_change_counts_only_boats_with_a_current_fix_at_both_ends():
+    """18 Sep 2026, 12:00: Andrea showed +6 and six boats -1 each, and nobody had moved. Her tracker had been silent 24 hours
+    earlier, so rank_at() placed her frozen position 9th. A change of place is counted among the boats that have a current
+    fix now AND had one 24 hours ago; for any other boat it is blank."""
+    H = 3600; day = 86400
+    def fx(*pairs): return [{"at": at, "dtf": dtf * 1852.0, "lat": 0.0, "lon": 0.0} for at, dtf in pairs]
+    now = 10 * day
+    fleet = {1: fx((now - day, 1000), (now, 850)),                       # the leader, then and now
+             2: fx((now - day - 20 * H, 1100), (now, 900)),              # silent 24 h ago (last fix 20 h older): on paper she was last then
+             3: fx((now - day, 1050), (now, 950)),                       # lost a place to nobody
+             4: fx((now - day, 1060), (now, 940)),                       # really passed boat 3
+             5: fx((now - day, 1200), (now - 5 * H, 1100))}              # silent now
+    assert stats.place_changes(fleet, now) == {1: 0, 2: None, 3: -1, 4: 1, 5: None}
+    assert stats.place_changes(fleet, 12 * H) == {1: None, 2: None, 3: None, 4: None, 5: None}   # nothing to compare with before the fleet existed
+
 def test_position_text():
     assert stats.position_text(29.5567, -13.665) == "29°33.4′N 013°39.9′W"
     assert stats.position_text(29.99999, -13.999999) == "30°00.0′N 014°00.0′W"   # minutes never print as 60.0
@@ -71,6 +86,7 @@ VS_VDH_DAYS = {17: -0.50, 16: -0.52, 13: -0.62, 4: -0.69, 3: -0.84, 5: -0.88, 2:
                1: -1.80, 15: -1.97, 8: -3.52, 9: -3.74}          # time rule, boats behind Van Den Heede; 6 and 10 are ahead
 VS_KIRSTEN_DAYS = {8: -0.91, 9: -1.06}                           # behind Neuschäfer; the other 14 are ahead
 NO_4H_LEG = {16, 4}                                                # Andrea and Daniel: the latest 4-hour leg spans a missed report
+PLACE_CHANGE_OVERRIDE = {17: 0, 16: None}                           # audit N6 at its source: Andrea missed the 00:00 report, so her -1 and Ertan's +1 were never a move
 RUN_PB_OVERRIDE = {3: True}                                        # Guido: his clean best (150 nm) ENDS at T, so today's run is his personal best (follows from audit N3; the audit's count of 5 predates it)
 
 def test_snapshot_matches_golden():
@@ -79,7 +95,7 @@ def test_snapshot_matches_golden():
     by = {b["id"]: b for b in snap["boats"]}
     for tid, g in GB.items():
         b = by[tid]
-        assert b["rank"] == g["rank"] and b["rank_change"] == g["chg"], tid
+        assert b["rank"] == g["rank"] and b["rank_change"] == PLACE_CHANGE_OVERRIDE.get(tid, g["chg"]), tid
         assert round(b["dtf_nm"]) == round(g["dtf"]) and b["gap_nm"] == g["gap"], tid
         assert hhmm(b["last_fix_at"]) == g["fix"], tid
         assert round(b["w24"]["dist_nm"]) == g["run24"], tid

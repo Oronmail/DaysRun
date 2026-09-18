@@ -12,7 +12,7 @@ def snap():
 
 def test_events_for_race_day_10():
     s = snap()
-    prev = [{"team_id": b["id"], "rank": b["rank"] - b["rank_change"], "best24_nm": b["best24_nm"] - (1 if b["pb24"] or b["fleet_best24"] else 0),
+    prev = [{"team_id": b["id"], "rank": b["rank"] - (b["rank_change"] or 0),   # a blank change (no current fix at one end) counts as no change here "best24_nm": b["best24_nm"] - (1 if b["pb24"] or b["fleet_best24"] else 0),
              "stale": False, "next_mark": b["next_mark"]} for b in s["boats"]]
     ev = events.derive(s, prev, [])
     kinds = {e["kind"] for e in ev}

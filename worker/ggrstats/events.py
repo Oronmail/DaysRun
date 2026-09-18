@@ -40,13 +40,10 @@ def derive(snapshot, previous, conditions):
         was_mark = prev.get(b["id"], {}).get("next_mark")
         if was_mark and -1 < course.order(was_mark) < course.order(b["next_mark"]):
             add("next_mark", b["id"], f"{b['first']} {_passed(was_mark)}", page="Course & sprints")
-    # A place gained or lost against a boat with an older fix is not a move (audit N6): compare the order now with the
-    # order 24 hours ago among the boats that have a current fix. rank_change = rank then − rank now.
-    stale_ids = set((snapshot.get("fleet") or {}).get("stale_ids", []))
-    fresh = [b for b in boats if b["id"] not in stale_ids]
-    now_pos = {b["id"]: i for i, b in enumerate(sorted(fresh, key=lambda b: b["rank"]))}
-    then_pos = {b["id"]: i for i, b in enumerate(sorted(fresh, key=lambda b: b["rank"] + b["rank_change"]))}
-    gained = {b["id"]: then_pos[b["id"]] - now_pos[b["id"]] for b in fresh}
+    # A place gained or lost against a boat with an older fix is not a move (audit N6). The snapshot's rank_change already says
+    # so at its source (stats.place_changes): places gained among the boats with a current fix now AND 24 hours ago, None otherwise.
+    fresh = [b for b in boats if b.get("rank_change") is not None and not b.get("stale")]
+    gained = {b["id"]: b["rank_change"] for b in fresh}
     if any(gained.values()):
         # The feed prints titles, so the title names who moved and by how much, grouped like the table's arrows:
         # "Places, last 24 hours: ▲2 Louis · ▲1 Ertan, Henry · ▼1 Mara". The same line is stored once a day.

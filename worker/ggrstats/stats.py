@@ -33,6 +33,24 @@ def rank_at(fleet, t):
             rows.append((f["dtf"], tid))
     return {tid: i + 1 for i, (_, tid) in enumerate(sorted(rows))}
 
+def place_changes(fleet, T, stale_h=3.5):
+    """{team_id: places gained (+) or lost (−) in 24 hours, or None}. Counted among the boats that have a current fix at T AND had
+    one 24 hours earlier: rank_at() ranks a silent boat at her frozen distance to finish, so the day after a silence she 'gains'
+    places she never lost and every boat she had drifted behind 'loses' one (18 Sep 2026: Andrea +6, six boats −1, nobody had
+    moved). None for a boat without a current fix at either end."""
+    def current(t):
+        out = {}
+        for tid, fx in fleet.items():
+            f = at_or_before(fx, t)
+            if f and f.get("dtf") and (t - f["at"]) / 3600.0 < stale_h:
+                out[tid] = f["dtf"]
+        return out
+    now, then = current(T), current(T - DAY)
+    both = [tid for tid in now if tid in then]
+    pos = lambda d: {tid: i for i, tid in enumerate(sorted(both, key=lambda tid: (d[tid], tid)))}
+    p_now, p_then = pos(now), pos(then)
+    return {tid: (p_then[tid] - p_now[tid] if tid in p_now else None) for tid in fleet}
+
 def personal_bests(slots, k_end, t0, start_at):
     """(best 4-h leg speed, best 24-h run, best 7-day run) as (value, end_at). Start day excluded; fixes before t0 ignored."""
     best4 = best24 = best7 = (0.0, None)
@@ -145,7 +163,7 @@ def compute_snapshot(setup, fixes_by_team, T):
     team_meta = {t["id"]: t for t in setup["teams"]}
     racing_ids = [tid for tid in fixes_by_team if tid not in config.GHOSTS and tid in team_meta]
     racing = {tid: fixes_by_team[tid] for tid in racing_ids}
-    rank_now, rank_then = rank_at(racing, T), rank_at(racing, T - DAY)
+    rank_now, changes = rank_at(racing, T), place_changes(racing, T)
     togo = course.mark_togo(setup["course"]["nodes"], config.MARKS)      # each mark's own distance to finish, on YB's scale
 
     ghosts = {}
@@ -185,7 +203,7 @@ def compute_snapshot(setup, fixes_by_team, T):
         sailed = sum(gc_nm(slots[a]["lat"], slots[a]["lon"], slots[b]["lat"], slots[b]["lon"]) for a, b in zip(ks, ks[1:]))
         boats.append({
             "id": tid, "name": names.FULL.get(tid, team_meta[tid]["name"]), "first": names.FIRST.get(tid, team_meta[tid]["name"].split()[0]),
-            "rank": rank_now[tid], "rank_change": rank_then.get(tid, rank_now[tid]) - rank_now[tid],
+            "rank": rank_now[tid], "rank_change": changes.get(tid),
             "dtf_nm": f["dtf"] / 1852.0, "last_fix_at": f["at"], "stale": (T - f["at"]) / 3600.0 >= 3.5,
             "lat": f["lat"], "lon": f["lon"], "position_text": position_text(f["lat"], f["lon"]),
             "w4": w4, "w24": w24, "w7": w7, "legs": leg_rows, "speed_log": [l["speed_kn"] for l in leg_rows],
