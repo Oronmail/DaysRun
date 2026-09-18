@@ -76,8 +76,9 @@ RETURNING = [
 ]
 
 # (name, kind, value, guard). kind "lat": the boat crosses this latitude southbound; "lon": eastbound, with the guard on latitude;
-# "mark": YB's own distance to finish of a mark of the 2026 course (course.mark_togo), passed when the boat's distance to finish falls
-# below it less the mark's margin; "finish": the documented finish.
+# "mark": a mark of the 2026 course (course.mark_togo), passed when the boat's distance to finish falls to the mark's own — read on the
+# same scale as the boat's own distance, and with NO margin: a margin exists so that the live site never announces a rounding early,
+# and a table of history wants the crossing itself; "finish": the documented finish.
 MILESTONES = [("Lanzarote", "mark", "Lanzarote", None), ("Equator", "lat", 0.0, lambda lat, lon: -45 < lon < 0),
               ("Cape of Good Hope", "lon", 18.4731, lambda lat, lon: lat < -30), ("Hobart", "mark", "Hobart Gate", None),
               ("Cape Horn", "lon", -67.2667, lambda lat, lon: lat < -50), ("Finish", "finish", None, None)]

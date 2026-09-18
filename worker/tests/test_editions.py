@@ -27,7 +27,8 @@ LINE = course.Line(NODES); COURSE_NM = LINE.total_nm
 START = U("2026-09-06T12:00:00")                                            # a slot boundary, so legs fall on the grid
 SETUP26 = json.load(open(FIX / "RaceSetup.20260916.json"))                  # the course every fleet is measured on
 LINE26 = course.Line(SETUP26["course"]["nodes"]); COURSE26_NM = LINE26.total_nm
-TOGO26 = course.mark_togo(SETUP26["course"]["nodes"], config.MARKS)
+TOGO26 = course.mark_togo(SETUP26["course"]["nodes"], config.MARKS)                      # YB's own figure where it is known: this year's fleet
+TOGO26_LINE = course.mark_togo(SETUP26["course"]["nodes"], config.MARKS, observed={})    # the line's own figure: the fleets measured on the line
 T26 = 1789516800                                                            # 2026-09-16 00:00 UTC, the golden report
 
 P = lambda fx, **kw: editions.prepare(fx, START, line=LINE, **kw)
@@ -75,16 +76,18 @@ def test_the_forward_search_widens_after_a_long_silence():
     assert abs(fell(editions.on_line([{"at": START, "lat": 46.5, "lon": -1.79, "dtf": 1}, far], line)) - 30.0) < 0.5
     assert fell(editions.on_line([{"at": START, "lat": 46.5, "lon": -1.79, "dtf": 1}, near], line)) < 25.0   # the window cannot reach
 
-def test_distance_to_finish_falls_no_faster_than_the_boat_sails_except_where_the_course_turns():
+def test_distance_to_finish_outruns_the_boat_only_at_a_bend_and_where_2018_never_rounded_trindade():
     """Amendment 7's invariant, on every fix of both real samples: the distance to finish must not fall by more than the boat
-    sailed between the two fixes, plus 5 nm. Measured, 77 of 11,252 pairs break it, and every one sits where the 2026 course line
-    turns and the boat cuts the bend — the hairpin round Lanzarote, the way into and out of Storm Bay, the corner waypoints of the
-    Southern Ocean, Cape Horn — where advancing along the line honestly outruns the great circle (the effect
-    course.MARGIN_COMPUTED_NM exists for); the median excess is 16 nm. Two are of another kind: Jean-Luc Van Den Heede and Are
-    Wiig sailed down the African side in 2018 and went nowhere near the 2026 course's dog-leg out to Trindade, so each rejoins the
-    line a thousand miles further on in one step (their miles made good jump that day and are right again afterwards). A narrower
-    search window does not mend that: measured with 4 legs ahead instead of 40, the same jump arrives in twelve smaller ones. The
-    counts are pinned so that any change in the measurement is seen."""
+    sailed between the two fixes, plus 5 nm. Measured, 77 of 11,252 pairs break it, and 75 sit where the 2026 course line turns
+    and the boat cuts the bend — the hairpin round Lanzarote, the way into and out of Storm Bay, the corner waypoints of the
+    Southern Ocean, Cape Horn — where advancing along the line honestly outruns the great circle; the median excess is 16 nm.
+    THE TWO BIG ONES ARE NOT A FAULT TO BE TUNED AWAY. The 2018 course had no Trindade: Jean-Luc Van Den Heede and Are Wiig
+    sailed down the African side at 16°W while the 2026 course dog-legs out to 29°W and back, so each rejoins the line a thousand
+    miles further on in a single step. Their total is right again afterwards (all four finishers of the samples end within 3 nm of
+    the finish); only that one race day's miles made good is absurd. A narrower search window does not mend it — measured with 4
+    legs ahead instead of 40, the same jump arrives in twelve smaller ones — because it is the two courses differing, not the
+    search. Whether a past fleet should be measured against Trindade at all is the owner's decision and has a task of its own;
+    this test is the alarm that will ring when it is taken, so pin the numbers, never soften them."""
     bad = []
     for race in ("ggr2018", "ggr2022"):
         for tid, b in prepared(race).items():
@@ -190,6 +193,21 @@ def test_an_added_fix_crosses_the_antimeridian_the_short_way():
                                                {"at": slot_time(k) + 3600, "lat": -48.0, "lon": -179.0}]) if f.get("interp"))
     assert abs(add["lon"] + 179.66667) < 1e-4                                                 # two thirds across 180, never back through Greenwich
 
+def three_hourly_off_the_slot(n):
+    """A boat reporting every three hours from an hour past a slot: every third slot then holds a real fix and the two between
+    it are filled — the shape that makes a report interpolated."""
+    return [{"at": START + 3600 + i * 3 * 3600, "lat": 46.5 - 5.0 * (i * 3.0) / 60.0, "lon": -1.79, "dtf": 1} for i in range(n)]
+
+def test_an_interpolated_report_is_never_a_fresh_one():
+    """An added fix serves the run, the wind legs and the miles sailed; it is never a position. When the report's own slot was
+    filled rather than reported, the row is the not-fresh row — her last REAL position and nothing else — exactly as for a boat
+    that missed the report, so that 'fresh' means here what it means on the live site."""
+    b, T = P(three_hourly_off_the_slot(25)), START + 12 * SLOT_S
+    assert b["slots"][slot_of(T)]["interp"] and editions.run_at(b["slots"], slot_of(T)) is not None   # the fill still gives her a run
+    r = editions.boat_day(b, START, T, COURSE_NM)
+    assert r["racing"] and not r["fresh"] and r["mg_nm"] is None and r["run24_nm"] is None
+    assert r["fix_at"] == START + 3600 + 15 * 3 * 3600 and abs(r["lat"] - 42.75) < 1e-9               # her last reported position, not a computed one
+
 def test_van_den_heede_has_a_day_s_run_inside_the_three_hourly_week_of_2018():
     start = editions_data.EDITIONS["ggr2018"]["start"]
     b = prepared("ggr2018")[8]
@@ -289,35 +307,53 @@ def test_nothing_after_the_pages_own_clock():
     assert editions.crossings(fx, START, None, None, {}, ms, until=START + 2400)["Forty-five"] == START + 2400
     assert editions.crossings(fx, START, None, None, {}, ms)["Forty-five"] == START + 2400
 
-SPLITS = (("ggr2022", 11, "Simon Curwen", 2411, "Hobart", 12), ("ggr2022", 7, "Kirsten Neuschafer", 4200, "Cape Horn", 6),
-          ("ggr2018", 8, "Jean-Luc Van Den Heede", 4200, "Cape Horn", 6), ("ggr2018", 8, "Jean-Luc Van Den Heede", 2411, "Hobart", 12))
+# YB's own checkpoints: 2411 is the Hobart gate and 4200 Cape Horn on both courses; 620 is the 2022 Canary checkpoint (Simon Curwen
+# stopped there 16 nm from the Lanzarote mark, Guy deBoer while he lay at Marina Rubicón).
+SPLITS = (("ggr2022", 11, "Simon Curwen", 2411, "Hobart"), ("ggr2022", 7, "Kirsten Neuschafer", 4200, "Cape Horn"),
+          ("ggr2018", 8, "Jean-Luc Van Den Heede", 4200, "Cape Horn"), ("ggr2018", 8, "Jean-Luc Van Den Heede", 2411, "Hobart"),
+          ("ggr2022", 11, "Simon Curwen", 620, "Lanzarote"), ("ggr2022", 14, "Guy deBoer", 620, "Lanzarote"))
 
-def test_2018_and_2022_milestones_agree_with_yb_splits():
-    """A longitude crossing is the same instant for YB and for us: Cape Horn falls 1.3 and 1.6 hours before YB's split. A MARK is
-    not the same instant at all, and Hobart shows why: the 2026 course's gate is said passed only 12 nm beyond it
-    (course.MARGIN_COMPUTED_NM, so that the site never calls a mark passed early), YB's 2018 and 2022 checkpoint node stands some
-    12 nm north of the 2026 gate, and a boat crosses Storm Bay at 5 knots — measured, both boats land 9 to 10 hours after YB. The
-    next test shows the margin is the whole of it; the tolerance here is 12 hours for a mark and stays 6 for a longitude."""
-    for race, tid, name, index, ms, hours in SPLITS:
-        row = next(r for r in editions_data.TEAMS[race] if r["id"] == tid); start = editions_data.EDITIONS[race]["start"]
-        x = editions.crossings(prepared(race)[tid]["fixes"], start, row["ended_how"], row["ended_at"], TOGO26, editions_data.MILESTONES)
-        split = zeg_stop(race, name, index)
-        assert abs(x[ms] - split) < hours * 3600, (race, ms, "ours " + hhmm(x[ms]), "YB " + hhmm(split), round((x[ms] - split) / 3600.0, 2))
-        assert x["Finish"] == row["ended_at"]
+def past_crossings(race, tid):
+    row = next(r for r in editions_data.TEAMS[race] if r["id"] == tid)
+    return editions.crossings(prepared(race)[tid]["fixes"], editions_data.EDITIONS[race]["start"], row["ended_how"], row["ended_at"],
+                              TOGO26_LINE, editions_data.MILESTONES)
 
-def test_most_of_the_hobart_gap_is_the_marks_own_margin():
-    """The same crossing read at the gate's own distance to finish, with no margin (the mark's togo raised by the margin cancels
-    it): Simon Curwen then lands 0.9 hours after YB's split instead of 9.2, Jean-Luc Van Den Heede 3.0 instead of 10.0. So 8.3
-    and 7.0 hours of the gap are the rule by which the site says a mark is passed, not the measurement: at the gate itself the
-    distance to finish is the gate's own, and no bend is being cut. What is left is YB's 2018 and 2022 checkpoint standing north
-    of the 2026 gate — a different gate on a different course, which no margin can reconcile."""
-    togo = dict(TOGO26, **{"Hobart Gate": TOGO26["Hobart Gate"] + course.MARGIN_COMPUTED_NM})
-    for race, tid, name, index, ms, _ in SPLITS:
-        if ms != "Hobart": continue
+def test_2018_and_2022_milestones_agree_with_yb_splits_within_six_hours():
+    """A milestone is the crossing itself: a mark is passed when the distance to finish falls to the mark's own, with no margin —
+    a margin exists so that the live site never announces a rounding early, and a table of history wants the instant. Measured on
+    the line's own figure for each mark (the scale these boats' own distances are on), all six land inside six hours of YB's
+    split; before this rule Hobart was 9 to 10 hours late for both boats and Lanzarote 6 hours late."""
+    for race, tid, name, index, ms in SPLITS:
         row = next(r for r in editions_data.TEAMS[race] if r["id"] == tid)
-        x = editions.crossings(prepared(race)[tid]["fixes"], editions_data.EDITIONS[race]["start"], row["ended_how"], row["ended_at"], togo, editions_data.MILESTONES)
-        split = zeg_stop(race, name, index)
-        assert abs(x[ms] - split) < 4 * 3600, (race, "ours " + hhmm(x[ms]), "YB " + hhmm(split), round((x[ms] - split) / 3600.0, 2))
+        x, split = past_crossings(race, tid), zeg_stop(race, name, index)
+        assert abs(x[ms] - split) < 6 * 3600, (race, ms, "ours " + hhmm(x[ms]), "YB " + hhmm(split), round((x[ms] - split) / 3600.0, 2))
+        if row["ended_how"] == "finished":
+            assert x["Finish"] == row["ended_at"]
+
+def test_the_hobart_crossing_is_the_gate_itself_not_twelve_miles_past_it():
+    """The ruling, pinned: Simon Curwen's distance to finish at the gate (0.4 nm from it, 24 Dec 02:00) reads the gate's own, so
+    with no margin his crossing falls within two hours of YB's split. Read 12 nm beyond the gate instead and it falls nine hours
+    late, on the far side of midnight — he crossed Storm Bay at 5 knots and lay there half a day."""
+    row = next(r for r in editions_data.TEAMS["ggr2022"] if r["id"] == 11)
+    x, split = past_crossings("ggr2022", 11), zeg_stop("ggr2022", "Simon Curwen", 2411)
+    assert abs(x["Hobart"] - split) < 2 * 3600, ("ours " + hhmm(x["Hobart"]), "YB " + hhmm(split))
+    late = editions.crossings(prepared("ggr2022")[11]["fixes"], editions_data.EDITIONS["ggr2022"]["start"], row["ended_how"], row["ended_at"],
+                              dict(TOGO26_LINE, **{"Hobart Gate": TOGO26_LINE["Hobart Gate"] - course.MARGIN_COMPUTED_NM}), editions_data.MILESTONES)
+    assert late["Hobart"] - x["Hobart"] > 6 * 3600
+
+def test_guy_deboer_2022_rounded_lanzarote_the_evening_before_he_went_aground():
+    """He did the film drop at Marina Rubicón on the evening of 17 September and was on the rocks of Fuerteventura at 04:45 the
+    next morning. Measured on the line's own Lanzarote figure his rounding is there; measured on YB's observed figure, which is
+    about 8 nm less than the line reads at the mark, it was not — the two scales must not be mixed."""
+    row = next(r for r in editions_data.TEAMS["ggr2022"] if r["id"] == 14)
+    x = past_crossings("ggr2022", 14)
+    b = prepared("ggr2022")[14]
+    assert "Lanzarote" in x, ("least distance to finish on the line", round(min(f["dtf"] for f in b["fixes"]) / 1852.0, 1),
+                              "the line's Lanzarote", round(TOGO26_LINE["Lanzarote"], 1))
+    assert U("2022-09-17T12:00:00") < x["Lanzarote"] < U("2022-09-18T04:45:00"), hhmm(x["Lanzarote"])
+    assert x["Lanzarote"] <= row["ended_at"] and "Equator" not in x
+    # He lay at the marina from 21:00 with his distance to finish 0.3 m above the mark's own, so the rounding is recorded as he left.
+    assert abs(x["Lanzarote"] - zeg_stop("ggr2022", "Guy deBoer", 620)) < 6 * 3600
 
 def test_deboer_2022_is_racing_at_the_report_before_the_grounding_and_gone_after_it():
     """Amendment 9: the boat went aground at 04:45 UTC on race day 14, so the 00:00 report of day 14 still counts her racing."""
@@ -340,11 +376,17 @@ def test_compute_returns_the_three_tables_for_a_small_fleet():
     assert len(out["boat_days"]) == 10 and all(set(db.BOAT_DAY_COLS) <= set(r) for r in out["boat_days"])
     assert all(set(db.DAY_COLS) <= set(d) for d in out["days"])
     assert all(set(db.MILESTONE_COLS) <= set(m) for m in out["milestones"]) and len(out["milestones"]) == 2
-    assert out["notes"] == {"filled_slots": 0, "moored_runs": 0}
+    assert out["notes"] == {"filled_slots": 0, "moored_runs": 0, "interp_reports": 0}
     assert {r["team_id"] for r in out["boat_days"]} == {1, 2}
 
 def test_compute_counts_what_it_added_and_what_it_left_out():
     boats = {1: three_hourly(START, 5.0, 96), 2: [{"at": START + i * SLOT_S + 7, "lat": 40.0, "lon": -1.79, "dtf": 1} for i in range(25)]}
     out = editions.compute(boats, {}, START, LINE, COURSE_NM, days=[1, 2, 3], winds={}, on_this_line=True)
     assert out["notes"]["filled_slots"] > 0 and out["notes"]["moored_runs"] > 0
+    assert out["notes"]["interp_reports"] == 0                                                # 00:00 lies on the 3-hour rhythm and on the grid alike
     assert editions.compute(boats, {}, START, LINE, COURSE_NM, days=[1], winds={}, on_this_line=False)["notes"]["filled_slots"] == 0
+
+def test_compute_counts_the_reports_that_were_filled_rather_than_reported():
+    out = editions.compute({1: three_hourly_off_the_slot(25)}, {}, START, LINE, COURSE_NM, days=[1, 2], winds={}, on_this_line=True)
+    assert out["notes"]["interp_reports"] == 2 and not any(r["fresh"] for r in out["boat_days"])
+    assert all(r["racing"] and r["lat"] is not None and r["mg_nm"] is None for r in out["boat_days"])

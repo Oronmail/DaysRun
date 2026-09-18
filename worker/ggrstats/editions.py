@@ -9,7 +9,7 @@ week, a rhythm the 4-hour grid meets only twice a day (fill_slots), and a boat m
 the record, her nought of a run kept off the fleet's average (MOORED_RUN_NM)."""
 import bisect, statistics
 from datetime import datetime, timezone
-from . import config, course, perf
+from . import perf
 from .grid import resample, window, slot_of, slot_time, gc_nm, bearing_deg, SLOT_S, SLOT_TOL_S
 from .stats import detect_restart, RUN24_LIMIT_NM, LEG_LIMIT_KN
 
@@ -105,9 +105,9 @@ def prepare(fixes, start_at, ended_at=None, ended_how=None, line=None):
     cum = [0.0]
     for a, b in zip(ks, ks[1:]):
         cum.append(cum[-1] + gc_nm(slots[a]["lat"], slots[a]["lon"], slots[b]["lat"], slots[b]["lon"]))
-    restart = detect_restart(fx, start_at)
-    return {"fixes": fx, "fix_ats": [f["at"] for f in fx], "slots": slots, "ks": ks, "ats": [slots[k]["at"] for k in ks], "cum": cum,
-            "restart": restart, "best": running_best(slots, start_at, restart), "ended_at": ended_at, "ended_how": ended_how,
+    restart, real = detect_restart(fx, start_at), [f for f in fx if not f.get("interp")]
+    return {"fixes": fx, "real": real, "real_ats": [f["at"] for f in real], "slots": slots, "ks": ks, "ats": [slots[k]["at"] for k in ks],
+            "cum": cum, "restart": restart, "best": running_best(slots, start_at, restart), "ended_at": ended_at, "ended_how": ended_how,
             "filled": sum(1 for f in slots.values() if f.get("interp"))}
 
 def past_slots(fixes, start_at, ended_at, line):
@@ -134,9 +134,11 @@ def _sailed(boat, k, t0):
 
 def boat_day(boat, start_at, T, course_nm):
     """One boat's row for the report at T. racing: started and not ended at T; finished: ended as 'finished' before T, and kept
-    at the course's length so that she stays ahead of the fleet she beat; fresh: a fix within 20 minutes of T, grid's own
-    tolerance. A boat that is not fresh keeps her last position and nothing else. Her best run so far is on every row, racing or
-    not: a record once set is not taken away when her race ends."""
+    at the course's length so that she stays ahead of the fleet she beat; fresh: a REPORTED fix within 20 minutes of T, grid's own
+    tolerance. A slot that fill_slots added serves the run, the wind legs and the miles sailed, never a position or a place: when
+    the report's own slot is a filled one the row is the not-fresh row, as for a boat that missed the report. A boat that is not
+    fresh keeps her last reported position and nothing else. Her best run so far is on every row, racing or not: a record once set
+    is not taken away when her race ends."""
     ended = boat["ended_at"] is not None and boat["ended_at"] <= T
     finished = ended and boat["ended_how"] == "finished"
     k, t0 = slot_of(T), t0_at(boat, T)
@@ -144,13 +146,13 @@ def boat_day(boat, start_at, T, course_nm):
     row = {"race_day": race_day_of(T, start_at), "as_of": T, "racing": T >= start_at and not ended, "finished": finished, "fresh": False,
            "fix_at": None, "lat": None, "lon": None, "togo_nm": None, "mg_nm": None, "sailed_nm": None, "run24_nm": None,
            "best24_nm": best[0], "best24_at": best[1], "place": None, "restarted": t0 > 0, "ended_at": boat["ended_at"]}
-    i = bisect.bisect_right(boat["fix_ats"], T + SLOT_TOL_S) - 1
+    i = bisect.bisect_right(boat["real_ats"], T + SLOT_TOL_S) - 1
     if i >= 0:
-        row.update(fix_at=boat["fixes"][i]["at"], lat=boat["fixes"][i]["lat"], lon=boat["fixes"][i]["lon"])
+        row.update(fix_at=boat["real"][i]["at"], lat=boat["real"][i]["lat"], lon=boat["real"][i]["lon"])
     if finished:
         row.update(togo_nm=0.0, mg_nm=course_nm)
     f = boat["slots"].get(k) if row["racing"] else None
-    if f is None:
+    if f is None or f.get("interp"):
         return row
     togo = f["dtf"] / 1852.0
     row.update(fresh=True, fix_at=f["at"], lat=f["lat"], lon=f["lon"], togo_nm=togo, mg_nm=course_nm - togo,
@@ -226,8 +228,10 @@ def crossings(fixes, start_at, ended_how, ended_at, togo_marks, milestones, unti
     crossing counts: the return across the equator months later does not overwrite the outward one, and a boat that rounded the
     Cape of Good Hope's longitude and then turned back to Cape Town keeps the crossing she made. Each is interpolated between the
     two fixes either side and counts only where the milestone's own guard holds. A mark of the 2026 course is passed when the
-    distance to finish falls below the mark's own, less the margin course.next_mark uses. The finish is the documented one.
-    Nothing after the page's own clock: until is the report of the last day computed, None for a race long finished."""
+    distance to finish falls to the mark's own, interpolated the same way and with NO margin: a margin exists so that the live
+    site never announces a rounding early, and a table of history wants the crossing itself. togo_marks must therefore be on the
+    same scale as the fixes (see compute). The finish is the documented one. Nothing after the page's own clock: until is the
+    report of the last day computed, None for a race long finished."""
     out = {}
     fx = [f for f in fixes if f["at"] >= start_at and (until is None or f["at"] <= until + SLOT_TOL_S)]
     late = lambda t: until is not None and t > until
@@ -237,7 +241,7 @@ def crossings(fixes, start_at, ended_how, ended_at, togo_marks, milestones, unti
                 out[name] = ended_at
             continue
         if kind == "mark":
-            thr = togo_marks[value] - (course.MARGIN_OBSERVED_NM if value in config.MARK_TOGO_OBSERVED else course.MARGIN_COMPUTED_NM)
+            thr = togo_marks[value]
             measured = [f for f in fx if f.get("dtf")]                   # a fix without a distance is in-port tracker noise, as least_dtf_nm has it
             for p, q in zip(measured, measured[1:]):
                 a, b = p["dtf"] / 1852.0, q["dtf"] / 1852.0
@@ -260,18 +264,28 @@ def crossings(fixes, start_at, ended_how, ended_at, togo_marks, milestones, unti
 def compute(fixes_by_team, ends, start_at, line, course_nm, days, winds, on_this_line, milestones=None, togo_marks=None, until=None):
     """Everything the page needs for one race: fixes_by_team {team_id: fixes}; ends {team_id: {ended_at, ended_how}} (empty for a
     race still running); days: the race days to (re)compute; winds as wind_day takes; on_this_line False for 2026, whose fixes
-    carry YB's own distance to finish, so that no two pages of the site disagree; togo_marks None: no milestones this run. notes
-    says what the two rules of a past fleet added and left out, for the run's log."""
+    carry YB's own distance to finish, so that no two pages of the site disagree; togo_marks None: no milestones this run.
+
+    togo_marks MUST be on the same scale as the fixes, and the caller owns that choice. A fleet measured on the line
+    (on_this_line True) takes `course.mark_togo(nodes, config.MARKS, observed={})` — the line's OWN figure at each mark, because
+    those boats' distances come from that same projection; at Lanzarote the line reads about 8 nm more than YB's observed
+    24,469.5, and mixing the two cost Guy deBoer a rounding he had made. This year's fleet (on_this_line False, YB's own
+    distances) takes `course.mark_togo(nodes, config.MARKS)`, YB's observed figure where one is known.
+
+    notes says what the two rules of a past fleet added and left out, for the run's log: filled_slots, the slots fill_slots
+    supplied; moored_runs, the boat-days whose run was too small to be sailing; interp_reports, the boat-days whose own report
+    was a filled slot and are therefore not fresh."""
     from . import editions_data
     milestones = editions_data.MILESTONES if milestones is None else milestones
     boats = {tid: prepare(fx, start_at, ends.get(tid, {}).get("ended_at"), ends.get(tid, {}).get("ended_how"), line if on_this_line else None)
              for tid, fx in fixes_by_team.items()}
-    dz, moored, out = day_zero(start_at), 0, {"days": [], "boat_days": [], "milestones": [], "notes": {}}
+    dz, moored, interp, out = day_zero(start_at), 0, 0, {"days": [], "boat_days": [], "milestones": [], "notes": {}}
     for d in days:
         T = dz + d * DAY
         rows = {tid: dict(boat_day(b, start_at, T, course_nm), team_id=tid) for tid, b in boats.items()}
         assign_places(rows)
         moored += sum(1 for r in rows.values() if r["run24_nm"] is not None and r["run24_nm"] < MOORED_RUN_NM)
+        interp += sum(1 for tid, b in boats.items() if rows[tid]["racing"] and (b["slots"].get(slot_of(T)) or {}).get("interp"))
         legs = {tid: day_legs(b["slots"], T, t0_at(b, T)) for tid, b in boats.items() if rows[tid]["racing"]}
         out["days"].append(fleet_day(rows, T, start_at, wind_day(legs, winds) if winds else None))
         out["boat_days"].extend(rows.values())
@@ -279,5 +293,5 @@ def compute(fixes_by_team, ends, start_at, line, course_nm, days, winds, on_this
         for tid, b in boats.items():
             for name, t in crossings(b["fixes"], start_at, b["ended_how"], b["ended_at"], togo_marks, milestones, until).items():
                 out["milestones"].append({"team_id": tid, "milestone": name, "passed_at": int(t), "race_day": race_day_of(t, start_at)})
-    out["notes"] = {"filled_slots": sum(b["filled"] for b in boats.values()), "moored_runs": moored}
+    out["notes"] = {"filled_slots": sum(b["filled"] for b in boats.values()), "moored_runs": moored, "interp_reports": interp}
     return out
