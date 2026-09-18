@@ -66,15 +66,28 @@ def _archive_get(session, params):
         raise RetryableWeatherError(f"archive body was not JSON: {e}") from e
     if isinstance(data, dict) and data.get("error"):
         raise RetryableWeatherError(f"archive error: {data.get('reason')}")
-    return data if isinstance(data, list) else [data]
+    rows = data if isinstance(data, list) else [data]
+    want = len(params["latitude"].split(","))
+    if len(rows) != want:          # never zip a short or long answer onto the wrong boats
+        raise RetryableWeatherError(f"archive answered {len(rows)} locations for {want} asked")
+    return rows
 
 def fetch_archive_wind(points, session=None, model="ecmwf_ifs", batch=20):
     """Model wind at the end of past 4-hour legs, for the Past races page: Open-Meteo's ARCHIVE with one named model
     pinned (default ecmwf_ifs) so every past fix comes from the same product and 'best match' can never silently mix
     models — checked 18 Sep 2026, the archive answers for ocean positions of July 2018, January 2019 and 2022 with that
-    model. One call per UTC date; points go out in chunks of at most `batch` locations (the free tier hangs or 429s on
-    big multi-location calls) and rows come back in the order of `points`. A null in the model's answer for a point's
-    hour is still returned as a row, with wind_kt/wind_dir_deg of None, so that slot is stored and never re-asked."""
+    model. One call per UTC date; points go out in chunks of at most `batch` locations, `batch` at least 1 (the free
+    tier hangs or 429s on big multi-location calls). A null in the model's answer for a point's hour is still returned
+    as a row, with wind_kt/wind_dir_deg of None, so that slot is stored and never re-asked.
+
+    ONE CALL IS ALL-OR-NOTHING: on any failure — a chunk's RetryableWeatherError, an HTTPError, a location-count
+    mismatch, an hour missing from the answer — this raises and returns no rows at all, even the rows of chunks that
+    had already succeeded; a caller that resumes after that would re-request them, spending an allowance that is
+    counted per location per day. A caller that must keep partial progress across a failure passes at most `batch`
+    points per call itself and stores each batch's rows before asking for the next; the internal chunking above is
+    only for a caller that does not need that, and rows always come back in the order of `points` within one call."""
+    if batch < 1:
+        raise ValueError("batch must be at least 1")
     if not points:
         return []
     days = {datetime.fromtimestamp(p["slot_at"], timezone.utc).strftime("%Y-%m-%d") for p in points}
@@ -88,7 +101,10 @@ def fetch_archive_wind(points, session=None, model="ecmwf_ifs", batch=20):
                                      "hourly": "wind_speed_10m,wind_direction_10m", "wind_speed_unit": "kn", "models": model,
                                      "start_date": day, "end_date": day, "timezone": "UTC"})
         for p, r in zip(chunk, res):
-            j = hour_index(r["hourly"]["time"], p["slot_at"])
+            try:
+                j = hour_index(r["hourly"]["time"], p["slot_at"])
+            except ValueError as e:
+                raise RetryableWeatherError(f"archive missing the hour for slot_at {p['slot_at']}: {e}") from e
             rows.append({"team_id": p["team_id"], "slot_at": p["slot_at"], "wind_kt": r["hourly"]["wind_speed_10m"][j],
                          "wind_dir_deg": r["hourly"]["wind_direction_10m"][j], "model": model})
     return rows
