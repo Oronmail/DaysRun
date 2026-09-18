@@ -27,3 +27,15 @@ MARK_TOGO_OBSERVED = {"Lanzarote": 24469.5}
 SPRINTS = [("45°N–40°N", 45.0, 40.0), ("40°N–35°N", 40.0, 35.0), ("35°N–30°N", 35.0, 30.0),
            ("30°N–Equator", 30.0, 0.0), ("Equator–40°S", 0.0, -40.0)]
 GHOSTS = {978: "Van Den Heede 2018", 940: "Neuschäfer 2022", 957: "Knox-Johnston 1968", 985: "Moitessier 1968"}
+
+
+def race_start(setup):
+    """The race's start, from YB's RaceSetup: the earliest start of the tags we can read, else the earliest of the boats.
+    YB adds and changes tags in the middle of a race (18 Sep 2026: a Chichester Class tag appeared, and a leaderboard tag with no
+    `teams` key stopped every worker run), so a tag without a `start` is ignored rather than fatal."""
+    starts = [t["start"] for t in setup.get("tags", []) if t.get("start") is not None]
+    if not starts:
+        starts = [t["start"] for t in setup.get("teams", []) if t.get("start") is not None]
+    if not starts:
+        raise ValueError("RaceSetup carries no start time, on a tag or on a boat")
+    return min(starts)

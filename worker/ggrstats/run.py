@@ -54,7 +54,7 @@ def cmd_derive(conn, race, as_of, fixes=None):
     if problems:                                      # never published over the last good snapshot; the failed run is what raises the alarm
         raise SanityError(f"snapshot {datetime.fromtimestamp(as_of, timezone.utc):%Y-%m-%d %H:%M} refused: " + "; ".join(problems))
     winds = db.load_winds(conn, race)                 # small; read each time so the pass after the weather call sees it
-    start_at = min(t["start"] for t in setup["tags"])
+    start_at = config.race_start(setup)
     for b in snapshot["boats"]:
         t0 = b["restart"]["first_out_at"] if b["restart"] else 0
         b["perf"] = perf.compute(fixes[b["id"]], start_at, t0, as_of, winds.get(b["id"], {}))

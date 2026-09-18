@@ -1,5 +1,6 @@
 # worker/tests/test_stats.py
 import gzip, json, pathlib
+import pytest
 from datetime import datetime, timezone
 from ggrstats import stats, grid
 from ggrstats.config import START_AT
@@ -155,3 +156,18 @@ def test_a_slot_nobody_has_reported_for_is_not_a_fleet_of_missed_reports():
     assert stats.unreported(stats.compute_snapshot(st, fx, T)) is False            # 15 of 16 reported at T
     assert stats.unreported(stats.compute_snapshot(st, fx, T + 24 * 3600)) is True # the fixture's last fix is 16 Sep 1205: nobody has
     assert stats.unreported({"boats": []}) is True
+
+
+def test_the_race_start_survives_a_tag_yb_adds_later():
+    """18 Sep 2026: YB added a Chichester Class tag to ggr2026 in the middle of the race, and a leaderboard tag without a `teams`
+    key stopped the worker dead. The race start was read as min(t["start"] for t in setup["tags"]) in three places, so a tag added
+    without a `start` would have stopped every derive the same way. A tag we cannot read is ignored; the boats answer instead."""
+    from ggrstats import config
+    tags = [{"id": 84200, "name": "All Boats", "start": 1788697800}, {"id": 84707, "name": "Chichester Class", "start": 1788697800}]
+    teams = [{"id": 1, "start": 1788697800}, {"id": 978, "start": 1757000000}]
+    assert config.race_start({"tags": tags, "teams": teams}) == 1788697800
+    assert config.race_start({"tags": [*tags, {"id": 9, "name": "New"}], "teams": teams}) == 1788697800   # the new tag has no start
+    assert config.race_start({"tags": [{"id": 9, "name": "New"}], "teams": teams}) == 1757000000          # no tag has one: the earliest boat
+    assert config.race_start({"tags": [], "teams": [{"id": 1, "start": 1788697800}]}) == 1788697800
+    with pytest.raises(ValueError):
+        config.race_start({"tags": [{"id": 9}], "teams": [{"id": 1}]})                                    # nothing to read: say so plainly

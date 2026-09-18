@@ -16,7 +16,7 @@ def connect(url=None):
                            keepalives=1, keepalives_idle=20, keepalives_interval=5, keepalives_count=3)
 
 def upsert_race(conn, key, setup):
-    start = min(t["start"] for t in setup["tags"])
+    start = config.race_start(setup)
     conn.execute("""insert into race (key, title, start_at, course_km, raw_setup, updated_at)
                     values (%s, %s, %s, %s, %s, now())
                     on conflict (key) do update set title=excluded.title, start_at=excluded.start_at,

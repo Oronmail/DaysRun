@@ -158,7 +158,7 @@ def sanity_problems(snapshot, previous, course_nm):
 
 def compute_snapshot(setup, fixes_by_team, T, conditions=None):
     """conditions: db.load_conditions, for the weather boards (None = boards without weather, as verify and the tests call it)."""
-    start_at = min(t["start"] for t in setup["tags"])
+    start_at = config.race_start(setup)
     course_nm = setup["course"]["distance"] / 1.852
     KT = slot_of(T)
     team_meta = {t["id"]: t for t in setup["teams"]}
