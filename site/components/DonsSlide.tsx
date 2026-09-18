@@ -30,18 +30,22 @@ function Story({ k, children }: { k: string; children: React.ReactNode }) {
 // "tracker silent", "the same"), never an abbreviation: the first viewer asked what PB and gap meant.
 const FOOT = 78, HEAD = 80;                                              // under the foot rule: name, place, difference; above the bar: the number and a two-line word
 function Col({ c, lead, fastestSlot, asOf, H, max }: { c: Column; lead: boolean; fastestSlot: number | null; asOf: string; H: number; max: number }) {
-  const gold = lead ? K.gold : undefined, bridged = c.bridgedNm > 0, change = runChange(c); let hatchDone = false;
+  const gold = lead ? K.gold : undefined, bridged = c.bridgedNm > 0, change = runChange(c), drawn = c.run != null; let hatchDone = false;
   const blocks = c.legs.map((l, i) => {
     if (l) return <div key={i} style={{ height: u(l.nm / max * H), background: fastestSlot === i ? K.gold : K.bar }} />;
     if (hatchDone || !bridged) return null; hatchDone = true;                                                     // one block for the whole silence: the run less the legs that are known
     return <div key={i} style={{ height: u(c.bridgedNm / max * H), border: `${u(1.5)} dashed ${K.muted}`, background: `repeating-linear-gradient(45deg, ${K.bar}55 0 ${u(5)}, transparent ${u(5)} ${u(10)})` }} />;
   }).reverse();                                                                                                   /* the oldest leg at the foot */
-  const flag = c.stale ? ["missed", hhmm(asOf)] : bridged ? ["tracker", "silent"] : c.pb ? ["personal", "best"] : null;   // two short lines: a word never reaches into the next column
-  return <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: u(H + HEAD + FOOT), minWidth: 0, opacity: c.stale ? 0.45 : 1 }}>
+  // Two short lines, so a word never reaches into the next column. A boat that missed this report but reported inside the last
+  // 24 hours is labelled with the hour its own 24 hours end at, in the words of the board's own head ("the 24 hours to 16:00").
+  const ends = c.endsAt, sameDay = ends != null && new Date(ends).getUTCDate() === new Date(asOf).getUTCDate();
+  const flag = ends ? ["the 24 hours", `to ${hhmm(ends)}${sameDay ? "" : " " + WEEKDAY[new Date(ends).getUTCDay()]}`]
+    : c.stale ? ["missed", hhmm(asOf)] : bridged ? ["tracker", "silent"] : c.pb ? ["personal", "best"] : null;
+  return <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: u(H + HEAD + FOOT), minWidth: 0, opacity: c.stale ? (drawn ? 0.55 : 0.4) : 1 }}>
     {flag && <div style={{ fontFamily: SANS, fontSize: u(14), fontWeight: 700, letterSpacing: u(0.6), lineHeight: 1.15, textTransform: "uppercase", textAlign: "center", whiteSpace: "nowrap", color: c.stale || bridged ? K.amber : K.gain }}>{flag[0]}<br />{flag[1]}</div>}
-    <div style={{ fontFamily: MONO, fontSize: u(28), color: gold, marginBottom: u(6) }}>{c.stale ? "—" : nm(c.run)}</div>
+    <div style={{ fontFamily: MONO, fontSize: u(28), color: gold, marginBottom: u(6) }}>{nm(c.run)}</div>
     <div style={{ alignSelf: "stretch", display: "flex", justifyContent: "center", borderBottom: `${u(2)} solid ${K.line}` }}>                                   {/* the columns touch, so this is one foot rule under the whole fleet */}
-      <div style={{ width: u(74), display: "flex", flexDirection: "column", gap: u(1) }}>{c.stale ? null : blocks}</div></div>
+      <div style={{ width: u(74), display: "flex", flexDirection: "column", gap: u(1) }}>{drawn ? blocks : null}</div></div>
     <div style={{ height: u(FOOT), display: "flex", flexDirection: "column", alignItems: "center" }}>
       <div style={{ fontFamily: SANS, fontSize: u(21), fontWeight: 600, marginTop: u(7), color: gold }}>{c.first}</div>
       <div style={{ fontFamily: SANS, fontSize: u(17), fontWeight: 600, color: K.muted }}>{ord(c.place)}</div>
@@ -51,7 +55,11 @@ function Col({ c, lead, fastestSlot, asOf, H, max }: { c: Column; lead: boolean;
 }
 export default function DonsSlide({ d }: { d: SlideData }) {
   const day = new Date(d.asOf), lead = d.biggest, max = scaleMax(d.cols), H = 222, delta = d.average != null && d.averageBefore != null ? Math.round(d.average) - Math.round(d.averageBefore) : null;
-  const fastestSlot = (c: Column) => (d.fastest && d.fastest.team_id === c.team_id ? 5 - Math.round((day.getTime() - new Date(d.fastest.end_slot).getTime()) / (4 * 3600 * 1000)) : null);
+  const fastestSlot = (c: Column) => {                                            // the gold block is counted from the column's OWN last report, which is earlier for a boat that missed this one
+    if (!d.fastest || d.fastest.team_id !== c.team_id) return null;
+    const i = 5 - Math.round((new Date(c.endsAt ?? d.asOf).getTime() - new Date(d.fastest.end_slot).getTime()) / (4 * 3600 * 1000));
+    return i >= 0 && i <= 5 ? i : null;
+  };
   const group = (g: [number, string[]][]) => g.map(([n, who]) => `${n} ${who.join(", ")}`).join(" · ");
   return <div style={{ ["--u" as string]: "min(calc(100vw / 1920), calc(100vh / 1080))", minHeight: "100vh", background: K.bg, display: "grid", placeItems: "center" } as React.CSSProperties}>
     <div style={{ width: u(1920), height: u(1080), position: "relative", overflow: "hidden", background: K.bg, color: K.text, fontFamily: "var(--font-serif), Georgia, serif" }}>

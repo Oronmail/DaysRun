@@ -7,7 +7,7 @@ const AS_OF = "2026-09-17T16:00:00+00:00", H4 = 4 * 3600 * 1000, T = new Date(AS
 const slot = (k: number) => new Date(T - (5 - k) * H4).toISOString().replace(".000Z", "+00:00");       // k = 0 is the oldest of the six legs
 const legs = (team_id: number, nms: (number | null)[]) => nms.map((nm, k) => ({ team_id, end_slot: slot(k), dist_nm: nm, speed_kn: nm == null ? null : nm / 4 }));
 const boat = (team_id: number, first: string, rank: number, run: number | null, o: Record<string, unknown> = {}) =>
-  ({ team_id, rank, rank_change: 0, stale: false, run24_nm: run, spd24: run == null ? null : run / 24, pb24: false, fleet_best24: false, gain24_nm: null as number | null, team: { first_name: first, name: first + " X" }, ...o });
+  ({ team_id, rank, rank_change: 0, stale: false, last_fix_at: AS_OF, run24_nm: run, spd24: run == null ? null : run / 24, pb24: false, fleet_best24: false, gain24_nm: null as number | null, team: { first_name: first, name: first + " X" }, ...o });
 
 const HENRY = legs(12, [28.6, 29.1, 30.0, 29.3, 28.6, 30.7]), DAMIEN = legs(6, [29.5, 28.7, 30.2, 29.4, 27.0, 26.6]);
 const ANDREA = legs(16, [28.0, null, null, null, null, null]), MATT = legs(15, [null, null, 26.3, 25.3, 23.4, 23.3]);
@@ -37,6 +37,44 @@ describe("the columns", () => {
   it("put a boat without a current fix last, whatever its run says", () => {
     const c = columns([...NOW, boat(1, "Gunnar", 2, 190, { stale: true })], BEFORE, ALL, AS_OF);
     expect(c[c.length - 1].first).toBe("Gunnar"); expect(c[c.length - 1].stale).toBe(true);
+  });
+});
+
+describe("a boat that missed the report", () => {
+  // 18 Sep 20:00 UTC: Andrea and Matt had no position at 20:00. Each had reported at 16:00, and each holds a whole 24-hour run
+  // ending there (Andrea 113.8 nm, Matt 142.1 nm). The board draws that run, faded, labelled with its own hour.
+  const EARLIER = T - 4 * H4, fix = (t: number) => new Date(t).toISOString();
+  const ending = (team_id: number, end: number, nms: (number | null)[]) =>
+    nms.map((nm, i) => ({ team_id, end_slot: fix(end - (5 - i) * H4), dist_nm: nm, speed_kn: nm == null ? null : nm / 4 }));
+  const ANDREA_TO_16 = ending(16, EARLIER, [18, 19, 20, 19, 18, 19.8]);          // 113.8 nm to the 16:00 report
+  const silent = (o: Record<string, unknown> = {}) => boat(16, "Andrea", 3, 113.8, { stale: true, last_fix_at: fix(EARLIER + 263000), ...o });   // the fix stamped 16:04:23
+
+  it("draws the run its own last report measured, and says which hour that run ends at", () => {
+    const c = columns([boat(6, "Damien", 1, 171), silent()], [], [...DAMIEN, ...ANDREA_TO_16], AS_OF).find(c => c.first === "Andrea")!;
+    expect([c.run, c.endsAt, c.bridgedNm]).toEqual([113.8, fix(EARLIER), 0]);
+    expect(c.legs.map(l => l?.nm)).toEqual([18, 19, 20, 19, 18, 19.8]);          // the six legs to 16:00, not the six to 20:00
+    expect(runChange(c)).toBeNull();                                             // no fair comparison with the day before
+  });
+  it("draws nothing when that last report is more than 24 hours old", () => {
+    const old = T - 28 * 3600 * 1000;                                            // on the grid, so only its age decides
+    const c = columns([silent({ last_fix_at: fix(old), run24_nm: 150 })], [], ending(16, old, [10, 10, 10, 10, 10, 10]), AS_OF)[0];
+    expect([c.run, c.endsAt]).toEqual([null, null]);
+  });
+  it("draws nothing when the last fix is off the 4-hour grid, where which window its run covers cannot be known", () => {
+    const c = columns([silent({ last_fix_at: fix(EARLIER - 90 * 60 * 1000) })], [], [...ANDREA_TO_16], AS_OF)[0];
+    expect([c.run, c.endsAt, c.legs.every(l => l == null)]).toEqual([null, null, true]);
+  });
+  it("stands after every boat with a current fix, and among those, in order of the run", () => {
+    const cols = columns([boat(6, "Damien", 1, 100), silent(), boat(15, "Matt", 14, 142.1, { stale: true, last_fix_at: fix(EARLIER + 66000) })],
+                         [], [...DAMIEN, ...ANDREA_TO_16, ...ending(15, EARLIER, [24, 24, 23, 23, 24, 24.1])], AS_OF);
+    expect(cols.map(c => c.first)).toEqual(["Damien", "Matt", "Andrea"]);        // 100 nm to 20:00 first, then 142 and 114 to 16:00
+  });
+  it("is kept out of every figure that measures the same 24 hours for the whole fleet", () => {
+    const cols = columns([boat(6, "Damien", 1, 100), silent()], [], [...DAMIEN, ...ANDREA_TO_16], AS_OF);
+    expect(biggestRun(cols)?.first).toBe("Damien");                              // 114 to 16:00 is not the day's biggest run
+    expect(fleetAverage(cols)).toBe(100);
+    expect(scaleMax(cols)).toBe(190);                                            // but the chart's scale holds its bar
+    expect(scaleMax([...cols, { run: 200 } as never])).toBe(200);
   });
 });
 
@@ -92,9 +130,9 @@ describe("against the 2018 winner, and places", () => {
     expect(runChange(col(150, 140, { stale: true }))).toBeNull();                          // a boat that missed the report is compared with nothing
     expect(runChange(col(142, 150, { bridgedNm: 51.7 }))).toBeNull();                      // a run across a silent tracker is a minimum: a difference from it would be a guess
   });
-  it("scales the chart to the day's runs, never tighter than 190 nm, so the bars of one day can be set against another's", () => {
-    expect(scaleMax([{ stale: false, run: 204 }, { stale: false, run: 151 }, { stale: true, run: 300 }] as never[])).toBe(204);   // a missed boat draws nothing and does not count
-    expect(scaleMax([{ stale: false, run: 120 }] as never[])).toBe(190);
+  it("scales the chart to the runs it draws, never tighter than 190 nm, so the bars of one day can be set against another's", () => {
+    expect(scaleMax([{ run: 204 }, { run: 151 }, { run: null }] as never[])).toBe(204);   // a boat that draws nothing does not count
+    expect(scaleMax([{ run: 120 }] as never[])).toBe(190);
   });
   it("calls a run a personal best only when it equals the boat's own best, never because it is the fleet's longest run of the day", () => {
     // 18 Sep 16:00: Henry's 159 nm was the longest run of the last 24 hours (the worker's fleet_best24), a day after his 180: the board said "personal best".
