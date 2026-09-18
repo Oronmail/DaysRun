@@ -8,9 +8,15 @@ export default function Tips({ width, height, targets, children, fixed, open }: 
   const pc = (v: number, of: number) => `${(v / of * 100).toFixed(3)}%`;
   return <div className="tipwrap" style={fixed ? { width, maxWidth: "100%" } : undefined}>{children}
     {targets.map((t, i) => { const style = { left: pc(t.x, width), top: pc(t.y, height), width: pc(t.w, width), height: pc(t.h, height), ["--x" as string]: pc(t.x, width) } as React.CSSProperties;
-      const inner = <>
-      {t.dot && <span className="tipdot" style={{ left: pc(t.dot.x - t.x, t.w), top: pc(t.dot.y - t.y, t.h) }} />}
-      <div className={`tipbox${t.row ? ` row${t.y > height * 0.55 ? " up" : ""}` : open ? `${open === "left" ? " flip" : ""}${(t.dot ? t.dot.y : t.y) > height * 0.6 ? " up" : ""}` : side(t.x + t.w / 2, t.dot ? t.dot.y : t.y, width, height)}`}><div className="tiphead">{t.tip.title}</div>{t.tip.lines.map((l, j) => <div key={j} className={j === 0 ? "num" : undefined}>{l}</div>)}</div></>;
-      return t.href ? <a key={i} className="pt" href={t.href} aria-label={t.label} style={style}>{inner}</a> : <div key={i} className={t.point ? "pt" : "pt bar"} tabIndex={0} style={style}>{inner}</div>; })}
+      // A linked target (a boat on the fleet chart): the box, a link inside it for a phone (where a tap opens the box and stays on the
+      // page), and on a device with a pointer a transparent link over the whole target, so that a click still opens the skipper's page.
+      return <div key={i} className={t.point ? "pt" : "pt bar"} tabIndex={0} style={style}>
+        {t.dot && <span className="tipdot" style={{ left: pc(t.dot.x - t.x, t.w), top: pc(t.dot.y - t.y, t.h) }} />}
+        {t.href && <a className="ptlink" href={t.href} aria-label={t.label} />}
+        <div className={`tipbox${t.row ? ` row${t.y > height * 0.55 ? " up" : ""}` : open ? `${open === "left" ? " flip" : ""}${(t.dot ? t.dot.y : t.y) > height * 0.6 ? " up" : ""}` : side(t.x + t.w / 2, t.dot ? t.dot.y : t.y, width, height)}`}>
+          <div className="tiphead">{t.tip.title}</div>{t.tip.lines.map((l, j) => <div key={j} className={j === 0 ? "num" : undefined}>{l}</div>)}
+          {t.href && <a className="tiplink" href={t.href}>the skipper’s page →</a>}
+        </div>
+      </div>; })}
   </div>;
 }

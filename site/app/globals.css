@@ -94,10 +94,13 @@ main svg[viewBox] { max-width: 100%; height: auto; }
 .pt.bar:hover, .pt.bar:focus { background: rgba(27, 31, 36, 0.06); }
 .pt:not(.bar) { cursor: default; }                       /* the whole column answers, not only the bar's top */
 .tipdot { position: absolute; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border: 2px solid var(--ink); border-radius: 50%; display: none; } .pt:hover .tipdot, .pt:focus .tipdot { display: block; }
-.tipbox { display: none; position: absolute; left: calc(100% + 6px); top: -10px; background: var(--panel); border: 1px solid var(--ink); padding: 8px 10px; font-size: 12.5px; line-height: 1.45; white-space: nowrap; box-shadow: 0 2px 0 rgba(27, 31, 36, 0.15); color: var(--ink); pointer-events: none; }
+.tipbox { display: none; position: absolute; left: calc(100% + 6px); top: -10px; background: var(--panel); border: 1px solid var(--ink); padding: 8px 10px; font-size: 12.5px; line-height: 1.45; white-space: nowrap; box-shadow: 0 2px 0 rgba(27, 31, 36, 0.15); color: var(--ink); }   /* the box takes the pointer: its link must be clickable */
 .tipbox.flip { left: auto; right: calc(100% + 6px); } .tipbox.up { top: auto; bottom: -10px; }
 .tipbox.row { left: auto; right: 10px; top: calc(100% + 2px); } .tipbox.row.up { top: auto; bottom: calc(100% + 2px); }   /* a full-width row: the box stays inside the chart */
 .tipbox .tiphead { font-family: var(--font-sans), sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--graphite); }
-.pt:hover .tipbox, .pt:focus .tipbox { display: block; }
+.pt:hover .tipbox, .pt:focus .tipbox, .pt.open .tipbox { display: block; } .pt.open .tipdot { display: block; } .pt.open { z-index: 20; }   /* .open: set by a tap on a phone (the script in the layout) */
+.ptlink { position: absolute; inset: 0; }                                                     /* a pointer's click on a boat opens the skipper's page */
+@media (hover: none) { .ptlink { display: none; } }                                           /* a finger's tap opens the box instead; the box holds the link */
+.tiplink { display: block; margin-top: 4px; color: var(--link); text-decoration: underline; text-underline-offset: 2px; }
 @media (max-width: 900px) { .tipbox, .tipbox.flip, .tipbox.up { left: 0; right: auto; top: auto; bottom: calc(100% + 4px); white-space: normal; width: 214px; transform: translateX(calc(-1 * var(--x))); }   /* above the chart, where a finger does not cover it; it slides with the target and cannot leave the screen */
   .tipbox.row, .tipbox.row.up { left: auto; right: 6px; transform: none; top: calc(100% + 2px); bottom: auto; } .tipbox.row.up { top: auto; bottom: calc(100% + 2px); } }

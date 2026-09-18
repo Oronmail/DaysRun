@@ -15,5 +15,8 @@ export const metadata: Metadata = { metadataBase: new URL(SITE_URL), title: PAGE
   openGraph: { type: "website", siteName: SITE_NAME, title: PAGES["/"].title, description: PAGES["/"].description, images: [SHARE_IMAGE] },
   twitter: { card: "summary_large_image", title: PAGES["/"].title, description: PAGES["/"].description, images: [SHARE_IMAGE] } };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang="en" className={`${sans.variable} ${mono.variable} ${serif.variable} ${marker.variable}`}><body>{children}<Analytics /></body></html>;
+  // On a device without hover (a phone), a tap on a chart's target opens its box and a tap elsewhere closes it; the boat's link
+  // inside the box is how the reader goes on to the skipper's page. Twelve lines, no framework: the pages stay static.
+  const tap = `(function(){if(!matchMedia('(hover: none)').matches)return;document.addEventListener('click',function(e){var t=e.target.closest('.pt');var open=document.querySelectorAll('.pt.open');if(!t||t.classList.contains('open')&&!e.target.closest('.tipbox')){open.forEach(function(p){p.classList.remove('open')});return}if(e.target.closest('.tipbox'))return;e.preventDefault();open.forEach(function(p){p.classList.remove('open')});t.classList.add('open')},true)})();`;
+  return <html lang="en" className={`${sans.variable} ${mono.variable} ${serif.variable} ${marker.variable}`}><body>{children}<Analytics /><script dangerouslySetInnerHTML={{ __html: tap }} /></body></html>;
 }
