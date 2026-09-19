@@ -107,3 +107,44 @@ export async function raceSetup(): Promise<{ start_at: string; course_km: number
 export async function legsBetween(fromIso: string, toIso: string): Promise<{ team_id: number; end_slot: string; dist_nm: number | null; speed_kn: number | null }[]> {
   return ok(await supabase.from("leg").select("team_id, end_slot, dist_nm, speed_kn").eq("race_key", RACE).gt("end_slot", fromIso).lte("end_slot", toIso).limit(1000));
 }
+
+// The Past races page (db/migrations/0005_editions.sql): the fleets of 2018 and 2022 laid on this year's course line, plus
+// this year's own daily row so the three can be read the same way. One row per race per race day.
+export type EditionDay = {
+  race_key: string; race_day: number; as_of: string;
+  racing: number; finished: number; fresh: number;                                     // boats in the race; home; with a fix within 20 min of the report
+  leader_team_id: number | null; leader_mg_nm: number | null; median_mg_nm: number | null; last_mg_nm: number | null;
+  best_run_nm: number | null; best_run_team_id: number | null;                          // the biggest 24-hour run between 00:00 reports THAT DAY
+  best_sofar_nm: number | null; best_sofar_team_id: number | null; best_sofar_at: string | null;   // the race's best 24-hour run so far, and who set it
+  mean_run_nm: number | null; runs_n: number;
+  wind_kt: number | null; wind_legs: number; legs_upwind: number; legs_reaching: number; legs_running: number;
+  straight_pct: number | null;                                                          // miles sailed per 100 made good, the middle boat
+};
+// One row per boat per race day.
+export type EditionBoatDay = {
+  race_key: string; team_id: number; race_day: number; as_of: string;
+  racing: boolean; finished: boolean; fresh: boolean;
+  fix_at: string | null; lat: number | null; lon: number | null; position_text: string | null;
+  togo_nm: number | null; mg_nm: number | null; sailed_nm: number | null; run24_nm: number | null;
+  best24_nm: number | null; best24_at: string | null;                                   // the boat's own best 24-hour run so far
+  place: number | null;
+};
+export type EditionMilestone = { race_key: string; team_id: number; milestone: string; passed_at: string; race_day: number };
+// A team of a past race: the same shape as this year's, plus how its race ended.
+export type PastTeam = Team & { race_key: string; ended_at: string | null; ended_how: string | null; ended_where: string | null; class_note: string | null; source: string | null };
+
+export async function editionDays(): Promise<EditionDay[]> {
+  return allRows((a, b) => supabase.from("edition_day").select("*").order("race_key").order("race_day").range(a, b));
+}
+export async function editionBoatDays(raceKey: string, raceDay: number): Promise<EditionBoatDay[]> {
+  return ok(await supabase.from("edition_boat_day").select("*").eq("race_key", raceKey).eq("race_day", raceDay).order("place", { nullsFirst: false }));
+}
+export async function editionBoatSeries(raceKey: string, teamIds: number[]): Promise<EditionBoatDay[]> {
+  return allRows((a, b) => supabase.from("edition_boat_day").select("*").eq("race_key", raceKey).in("team_id", teamIds).order("team_id").order("race_day").range(a, b));
+}
+export async function editionMilestones(): Promise<EditionMilestone[]> {
+  return allRows((a, b) => supabase.from("edition_milestone").select("*").order("race_key").order("passed_at").range(a, b));
+}
+export async function teamsOf(raceKey: string): Promise<PastTeam[]> {
+  return ok(await supabase.from("team").select("*").eq("race_key", raceKey).eq("is_ghost", false).order("id"));
+}
