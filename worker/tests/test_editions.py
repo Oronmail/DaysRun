@@ -144,10 +144,12 @@ def test_an_impossible_leg_makes_no_run():
 
 def test_a_fresh_row_carries_the_worker_s_own_formatted_position():
     """The site prints position_text as it stands, never reformatting a lat/lon itself (the handoff's rounding bug:
-    a position printing as 29°60.0′N). The worker formats it once, with stats.position_text, on the fresh path."""
-    b = P(straight(START, 20.0, 12))
+    a position printing as 29°60.0′N). The worker formats it once, with stats.position_text, on the fresh path. Pinned to a
+    literal, not to stats.position_text(r['lat'], r['lon']): that calls the very function under test on the row's own numbers
+    and would pass even if boat_day stopped calling it at all."""
+    b = P(straight(START, 20.0, 12))                                       # 12 legs of 20 nm south from 46.5N: the fresh fix is 4.0 deg south
     r = editions.boat_day(b, START, START + 12 * SLOT_S, COURSE_NM)
-    assert r["fresh"] and r["position_text"] == stats.position_text(r["lat"], r["lon"])
+    assert r["fresh"] and r["position_text"] == "42°30.0′N 001°47.4′W"
     import re
     assert re.fullmatch(r"\d{2}°\d{2}\.\d′[NS] \d{3}°\d{2}\.\d′[EW]", r["position_text"])
 
@@ -162,9 +164,11 @@ def test_a_pinned_position_from_a_real_2022_boat():
     assert r["position_text"] == "43°34.0′N 008°21.9′W"
 
 def test_a_not_fresh_row_still_carries_her_last_position_as_text():
+    """Pinned to a literal, as above: calling stats.position_text on the row's own lat/lon proves only that the two numbers
+    were forwarded, not that they were formatted at all."""
     r2 = editions.boat_day(P(straight(START, 20.0, 12, gap_at=(12,))), START, START + 12 * SLOT_S, COURSE_NM)
     assert not r2["fresh"] and r2["lat"] is not None
-    assert r2["position_text"] == stats.position_text(r2["lat"], r2["lon"])
+    assert r2["position_text"] == "42°50.0′N 001°47.4′W"                   # her last real fix, eleven legs south of the start
 
 def test_a_boat_silent_since_before_the_gun_shows_no_position():
     """resample drops a fix before the start; the last-position lookup must too, or a boat whose tracker died on the quay would
@@ -410,6 +414,19 @@ def test_a_stopped_boat_is_not_the_fleet_s_best_run_so_far_while_she_lies_there(
     d = editions.fleet_day(rows, T, START, None)
     assert d["best_sofar_team_id"] == 1                                           # but she does not hold the fleet's headline while stopped
 
+def test_a_not_fresh_boat_can_hold_the_fleet_s_best_run_so_far():
+    """Finding 4: boat_day's default row (no leg to test — here, a report she missed entirely) reads stopped=False, a documented
+    choice, not an oversight. fleet_day's best_sofar_* iterates every row, not only the fresh ones, so a boat gone silent keeps
+    holding the fleet's headline on her last confirmed record until she reports again — never hidden, only unconfirmed."""
+    T = START + 12 * SLOT_S
+    other = P(straight(START, 20.0, 12))
+    silent = P(straight(START, 20.0, 12, gap_at=(12,)))                    # missed the report at T: the default, not-fresh row
+    silent["best"] = [(999.0, START + 7)] * len(silent["best"])            # a real record she set earlier, before falling silent
+    rows = {1: editions.boat_day(other, START, T, COURSE_NM), 2: editions.boat_day(silent, START, T, COURSE_NM)}
+    assert not rows[2]["fresh"] and rows[2]["best24_nm"] == 999.0 and rows[2]["stopped"] is False
+    d = editions.fleet_day(rows, T, START, None)
+    assert d["best_sofar_team_id"] == 2 and d["best_sofar_nm"] == 999.0
+
 def test_a_stopped_leg_is_not_classed_in_the_wind_bands_while_the_fleets_moving_legs_still_are():
     """The one the plain 24-hour-run rule got wrong: a leg the boat spent not moving is a course made good between two
     pieces of tracker noise, and must not be classed upwind/reaching/running (perf.sailing, as perf.wind_stats applies it)."""
@@ -485,6 +502,58 @@ def past_crossings(race, tid):
     row = next(r for r in editions_data.TEAMS[race] if r["id"] == tid)
     return editions.crossings(prepared(race)[tid]["fixes"], editions_data.EDITIONS[race]["start"], row["ended_how"], row["ended_at"],
                               TOGO26_LINE, editions_data.MILESTONES)
+
+# Finding 1: crossings' mark branch used to rely on dtf being rounded to the nearest metre to keep a fix pinned to a mark's own
+# vertex (course.py's apex snap: inside a concave corner's dead wedge the nearest point of the course line IS the vertex) from
+# being read as having reached it — by luck, since that rounding happens to leave a pinned fix 0.00017 nm ABOVE the Lanzarote
+# threshold. editions.MARK_PIN_TOL_NM makes the refusal explicit instead of accidental. THE_FULL_TABLE below is every crossing of
+# every sampled boat of both past fleets, pinned to the second, so a test can show the tolerance changes nothing today.
+THE_FULL_TABLE = {
+    ("ggr2018", 8): {"Lanzarote": 1531396801, "Equator": 1532822787, "Cape of Good Hope": 1535058794, "Hobart": 1538776790,
+                      "Cape Horn": 1543000027, "Finish": 1548753120},
+    ("ggr2018", 68): {"Lanzarote": 1531389601, "Equator": 1532731716, "Cape of Good Hope": 1535361896, "Hobart": 1540067601,
+                       "Cape Horn": 1543730183, "Finish": 1548973080},
+    ("ggr2018", 94): {},
+    ("ggr2018", 7): {"Lanzarote": 1531432801, "Equator": 1533097834},
+    ("ggr2022", 11): {"Lanzarote": 1663358418, "Equator": 1664998685, "Cape of Good Hope": 1667791944, "Hobart": 1671838677,
+                       "Cape Horn": 1677362858, "Finish": 1682589600},
+    ("ggr2022", 7): {"Lanzarote": 1663462801, "Equator": 1665159139, "Cape of Good Hope": 1668287514, "Hobart": 1671913848,
+                      "Cape Horn": 1676492014, "Finish": 1682624627},
+    ("ggr2022", 14): {"Lanzarote": 1663459201},
+    ("ggr2022", 4): {"Lanzarote": 1663830008, "Equator": 1665368642, "Cape of Good Hope": 1668162934},
+    ("ggr2022", 1): {"Lanzarote": 1663376400, "Equator": 1665168548, "Cape of Good Hope": 1668254623},
+}
+
+def test_the_full_past_fleet_milestone_table_is_unchanged_by_the_mark_pin_tolerance():
+    """Captured against the code BEFORE MARK_PIN_TOL_NM existed (the plain `a > thr >= b`), then re-asserted after: every one of
+    the 33 crossings of both sampled past fleets lands at the identical second. The tolerance is a refusal added at the metre
+    scale; nothing a boat actually did moves."""
+    seen = {}
+    for race in ("ggr2018", "ggr2022"):
+        for tid, b in prepared(race).items():
+            row = next(r for r in editions_data.TEAMS[race] if r["id"] == tid)
+            x = editions.crossings(b["fixes"], editions_data.EDITIONS[race]["start"], row["ended_how"], row["ended_at"],
+                                    TOGO26_LINE, editions_data.MILESTONES)
+            seen[(race, tid)] = {k: round(v) for k, v in x.items()}
+    assert seen == THE_FULL_TABLE
+    assert sum(len(v) for v in seen.values()) == 33
+
+def test_a_fix_pinned_to_a_marks_own_vertex_does_not_count_as_reaching_it_on_its_own():
+    """Real data, read from the rehearsal database: Susie Goodall (2018, team 73) held distance to finish 45,331,959 m for three
+    straight reports on race day 12 — her nearest point on the 2026 line pinned to node 28, the Lanzarote mark's own vertex —
+    while a real fix two reports earlier put her about 41 nm short of it (45,407,709 m). 45,331,959 is round(Lanzarote's own togo
+    in metres) TO THE METRE: whichever way that rounding falls (thr_m or one metre either side of it), a fix reading it must not
+    count as a rounding of Lanzarote on its own. thr_m - 1 is the case that would have fooled the old, luck-only comparison
+    (`a > thr >= b`): it reads fractionally BELOW the threshold, so the bare rule would have called Lanzarote passed from 41 nm out."""
+    thr_m = round(TOGO26_LINE["Lanzarote"] * 1852)
+    assert thr_m == 45331959                                                # the real value read off Susie Goodall's own fixes
+    far = {"at": 1531431600, "lat": 0.0, "lon": 0.0, "dtf": 45407709}        # 2018-07-12 22:00 UTC, her real fix, ~41 nm short
+    old_rule_would_fool = far["dtf"] / 1852.0 > TOGO26_LINE["Lanzarote"] >= (thr_m - 1) / 1852.0
+    assert old_rule_would_fool                                              # the fragility this test guards against, made concrete
+    for pinned_m in (thr_m - 1, thr_m, thr_m + 1):
+        pinned = {"at": far["at"] + 7200, "lat": 0.0, "lon": 0.0, "dtf": pinned_m}
+        x = editions.crossings([far, pinned], far["at"] - 1, None, None, TOGO26_LINE, editions_data.MILESTONES)
+        assert "Lanzarote" not in x, (pinned_m, x)
 
 def test_2018_and_2022_milestones_agree_with_yb_splits_within_six_hours():
     """A milestone is the crossing itself: a mark is passed when the distance to finish falls to the mark's own, with no margin —

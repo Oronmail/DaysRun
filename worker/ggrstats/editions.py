@@ -17,6 +17,19 @@ from .stats import detect_restart, position_text, RUN24_LIMIT_NM, LEG_LIMIT_KN
 DAY = 86400
 RESTART_WINDOW_S = 7 * DAY           # NOR C.1.2 lets a boat return and start again only within seven days of the gun; later, a fix
                                      # outside the marina after one inside it is an ARRIVAL (2022 held Damien Guillou to this window)
+MARK_PIN_TOL_NM = 0.001              # inside a concave corner's dead wedge (course.py's apex snap) the nearest point of the course
+                                     # line IS the vertex, so a fix there reads that vertex's own along-course figure to floating-
+                                     # point precision — 906 past-fleet fixes do this, 25 boats at Lanzarote from as far as 58 nm
+                                     # away — and a mark's own togo is that same vertex's figure (course.mark_togo, same _nearest).
+                                     # A fix merely pinned to the mark's vertex must not be read as HAVING REACHED it: crossings
+                                     # therefore requires the boat's distance to finish to read at least this far below the mark's
+                                     # own before calling it passed. Measured on the samples: rounding dtf to the nearest metre
+                                     # (on_line) leaves a pinned fix reading 0.00017 nm ABOVE the Lanzarote mark's own figure (node
+                                     # 28, still 58 nm off) and up to 0.0049 nm BELOW the Hobart Gate's (node 258, where Jean-Luc
+                                     # Van Den Heede's own position that day was in fact at the gate, sub-metre away). 0.001 nm sits
+                                     # between the two: no metre-rounding accident is ever read as a mark reached, but a boat truly
+                                     # there still counts. This is not the margin above (a fix pinned to a vertex needing to clear a
+                                     # rounding accident, not a live announcement made early); it changes no crossing in the samples.
 
 def day_zero(start_at):
     """00:00 UTC of the start date: race day N is this plus N days (the site's rule: a race day is a UTC calendar date)."""
@@ -148,7 +161,10 @@ def boat_day(boat, start_at, T, course_nm):
     is not taken away when her race ends. position_text is stats.position_text on whatever lat/lon the row carries, formatted once
     here so that no page ever rounds a position itself. stopped: her own 4-hour leg ending at this report reads under
     perf.STOPPED_KN (perf.sailing) — a fact about this one report, used to leave her out of the FLEET's figures (fleet_day) while
-    it holds; her own run24_nm and best24_nm on this row are never zeroed by it."""
+    it holds; her own run24_nm and best24_nm on this row are never zeroed by it. The default row — no leg to test: before racing
+    starts, or a report she missed entirely — reads stopped=False, on purpose, not an oversight: fleet_day's best_sofar_* iterates
+    EVERY row, not only the fresh ones, so False never hides a genuine record; it only risks crediting the fleet's headline to a
+    boat whose current state is unknown, for as long as she stays silent."""
     ended = boat["ended_at"] is not None and boat["ended_at"] <= T
     finished = ended and boat["ended_how"] == "finished"
     k, t0 = slot_of(T), t0_at(boat, T)
@@ -252,10 +268,12 @@ def crossings(fixes, start_at, ended_how, ended_at, togo_marks, milestones, unti
     crossing counts: the return across the equator months later does not overwrite the outward one, and a boat that rounded the
     Cape of Good Hope's longitude and then turned back to Cape Town keeps the crossing she made. Each is interpolated between the
     two fixes either side and counts only where the milestone's own guard holds. A mark of the 2026 course is passed when the
-    distance to finish falls to the mark's own, interpolated the same way and with NO margin: a margin exists so that the live
-    site never announces a rounding early, and a table of history wants the crossing itself. togo_marks must therefore be on the
-    same scale as the fixes (see compute). The finish is the documented one. Nothing after the page's own clock: until is the
-    report of the last day computed, None for a race long finished."""
+    distance to finish falls to the mark's own by at least MARK_PIN_TOL_NM, interpolated the same way and with NO OTHER margin: a
+    margin exists so that the live site never announces a rounding early, and a table of history wants the crossing itself. The
+    tolerance is not that margin — it exists only to refuse a fix pinned to the mark's own vertex (see MARK_PIN_TOL_NM), which reads
+    that vertex's figure while the boat may still be miles short of it. togo_marks must therefore be on the same scale as the
+    fixes (see compute). The finish is the documented one. Nothing after the page's own clock: until is the report of the last day
+    computed, None for a race long finished."""
     out = {}
     fx = [f for f in fixes if f["at"] >= start_at and (until is None or f["at"] <= until + SLOT_TOL_S)]
     late = lambda t: until is not None and t > until
@@ -269,7 +287,7 @@ def crossings(fixes, start_at, ended_how, ended_at, togo_marks, milestones, unti
             measured = [f for f in fx if f.get("dtf")]                   # a fix without a distance is in-port tracker noise, as least_dtf_nm has it
             for p, q in zip(measured, measured[1:]):
                 a, b = p["dtf"] / 1852.0, q["dtf"] / 1852.0
-                if a > thr >= b:
+                if a > thr and b <= thr - MARK_PIN_TOL_NM:
                     t = _interp(p["at"], a, q["at"], b, thr)
                     if not late(t):
                         out[name] = t

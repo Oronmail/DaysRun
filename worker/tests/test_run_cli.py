@@ -88,7 +88,8 @@ def test_all_reaches_revalidate_when_a_past_races_module_cannot_even_be_read(cli
     class Broken:
         def __getattr__(self, name):
             raise ImportError("editions_data could not be imported")
-    monkeypatch.setattr(ggrstats, "editions_data", Broken())
+    monkeypatch.setattr(ggrstats, "editions_data", Broken(), raising=False)   # the attribute exists only once some other test file
+                                                                               # has imported it for real; this test must not depend on that
     monkeypatch.setitem(sys.modules, "ggrstats.editions_data", Broken())
     monkeypatch.setattr(run, "cmd_editions", REAL_CMD_EDITIONS)               # the real command, against a module that cannot be used
     run.main(["all"])
