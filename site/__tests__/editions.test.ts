@@ -73,8 +73,9 @@ describe("bestSoFar", () => {
 
 describe("words", () => {
   it("says how far a returning skipper is from where the earlier race ended, or that the point is passed", () => {
-    expect(toPass(1519, 7008)).toBe("about 5,500 nm of this year’s course to go to that point");
-    expect(toPass(1203, 1299)).toBe("about 100 nm to that point");
+    // Each figure is miles made good on its OWN race's course, so the difference names no course at all.
+    expect(toPass(1519, 7008)).toBe("about 5,500 nm to go to where that race ended");
+    expect(toPass(1203, 1299)).toBe("about 100 nm to go to where that race ended");
     expect(toPass(1400, 1299)).toBe("past that point");
   });
   it("labels a race day with its date", () => {

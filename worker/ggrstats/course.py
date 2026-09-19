@@ -13,6 +13,10 @@ MARGIN_OBSERVED_NM = 3.0     # a mark whose distance to finish was read off YB a
 MARGIN_COMPUTED_NM = 12.0    # a mark whose distance is the course sum: YB cuts bends (8 nm short at Lanzarote), so say it late, never early
 
 # The corners the swept-bearing measure smooths: one row, and the licence to add another is narrow. Measured 19 Sep 2026.
+# NO PAGE OF THE SITE READS THIS TODAY. It was built so that the fleets of 2018 and 2022 could be projected onto this year's
+# course line and compared mile for mile; that common yardstick was abandoned the same day (the-measure-changed.md), and every
+# fleet now keeps YB's own distance to finish on its own course. The table and its tests stay because they are the record of why
+# — a polyline's nearest point is discontinuous, so the projection could never make two fleets agree — and the only way back.
 # WHY: the nearest point of a polyline is DISCONTINUOUS for a boat inside a sharp concave corner. At the corner's bisector the foot of
 # the perpendicular flips from the inbound arm to the outbound one, and the along-course value leaps by 2*D*cos(Phi/2) — 1.283 nm for
 # every mile the boat is off the line. This year's course turns 82.29 deg at Trindade; the 2018 fleet, for which Trindade was no mark,
@@ -106,9 +110,9 @@ def _corner(nodes, cum, row):
     """One row of CORNERS as the geometry the swept-bearing measure needs, derived from the course nodes at load time so that a
     course whose corner sits at another node index needs only that index changed. None when this course does not hold that corner —
     too short for the nodes, the nodes out of order, or the course failing any admission criterion the row asserts — and then
-    nothing is smoothed and the measure is today's, which is the safe direction to fail in on the live capture path. It is only
-    the safe direction if somebody is told: run._measure warns on every derive when a row has dropped out, and refuses outright on
-    the past-races rebuild, and test_trindade.test_constants_come_from_the_course pins the geometry against the fixture."""
+    nothing is smoothed and the measure is the plain nearest point, which is the safe direction to fail in. No page reads this
+    measure any more, so nothing published can move when a row drops out; what pins the geometry is
+    test_trindade.test_constants_come_from_the_course, against the fixture."""
     a, b = row["apex"], row["last"]
     if a < 3 or b <= a or b + 3 >= len(nodes):                       # the arms need three nodes each to be checked for straightness
         return None
@@ -148,9 +152,11 @@ def _swept(c, lat, lon, i, total):
     return total - (c["s_in"] - d + x / c["span"] * (c["s_out"] - c["s_in"] + 2.0 * d))
 
 class Line:
-    """YB's course as a polyline with its cumulative length, for measuring any point's distance to finish on THIS course: the
-    past fleets sailed other courses, and YB's own figure for them is on those. The search runs forward from the leg the boat
-    was on last time (back=3 legs, ahead=40), so a boat that turns back to port or crosses Storm Bay twice stays where it is.
+    """YB's course as a polyline with its cumulative length, for measuring any point's distance to finish on THIS course. It was
+    built to put the past fleets on this year's course line; that comparison is retired (editions.on_line) and no page reads the
+    class today — it stays with its tests as the record of why one yardstick could not be had, and as the way back to it.
+    The search runs forward from the leg the boat was on last time (back=3 legs, ahead=40), so a boat that turns back to port or
+    crosses Storm Bay twice stays where it is.
     Inside the wedge of a corner in CORNERS the swept-bearing measure answers instead; everywhere else this is the same float it
     has always been. `corners=()` builds the plain line, which is what the tests measure the rule against."""
     def __init__(self, nodes, corners=None):
@@ -159,9 +165,10 @@ class Line:
         self.total_nm = self.cum[-1]
         self.corners = [c for c in (_corner(nodes, self.cum, r) for r in (CORNERS if corners is None else corners)) if c]
     def adjusts(self, lat, lon, i):
-        """Would a corner move the plain measure for a fix at (lat, lon) whose forward search landed on leg `i`? The live fleet's
-        figures are YB's own and are checked against YB to 0.07 nm, so smoothing one would be a disagreement with the answer key
-        by construction: run.py counts this over this year's fleet on every derive and says so the moment it is not nought."""
+        """Would a corner move the plain measure for a fix at (lat, lon) whose forward search landed on leg `i`? Kept with the
+        measure itself: while the past fleets were projected onto this year's line, the worker counted this over the LIVE fleet on
+        every derive, because those figures are YB's own and are checked against YB to 0.07 nm, so smoothing one would have been a
+        disagreement with the answer key by construction. Nothing is projected now, so nothing counts it."""
         return any(_swept(c, lat, lon, i, self.total_nm) is not None for c in self.corners)
     def togo(self, lat, lon, i0=0, back=3, ahead=40):
         i, t = _nearest(self.nodes, lat, lon, max(0, i0 - back), min(len(self.nodes) - 1, i0 + ahead))

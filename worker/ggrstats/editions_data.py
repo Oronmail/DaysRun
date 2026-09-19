@@ -75,12 +75,20 @@ RETURNING = [
  {"team_2026": 5, "first": "Guy", "races": [{"race_key": "ggr2022", "team_id": 14}]},
 ]
 
-# (name, kind, value, guard). kind "lat": the boat crosses this latitude southbound; "lon": eastbound, with the guard on latitude;
-# "mark": a mark of the 2026 course (course.mark_togo), passed when the boat's distance to finish falls to the mark's own — read on the
-# same scale as the boat's own distance, and with NO margin: a margin exists so that the live site never announces a rounding early,
-# and a table of history wants the crossing itself; "finish": the documented finish.
-MILESTONES = [("Lanzarote", "mark", "Lanzarote", None), ("Equator", "lat", 0.0, lambda lat, lon: -45 < lon < 0),
-              ("Cape of Good Hope", "lon", 18.4731, lambda lat, lon: lat < -30), ("Hobart", "mark", "Hobart Gate", None),
+# (name, kind, value, guard). kind "lat": the boat crosses this latitude southbound; "lon": eastbound, with the guard on latitude —
+# both are GEOGRAPHIC and mean the same thing in every year, which is why the equator, the Cape of Good Hope and Cape Horn are
+# measured this way for every fleet; "split": THAT RACE'S OWN YB checkpoint, by YB'S CHECKPOINT INDEX in its zegments file — the
+# number carried in the checkpoint's own name (`GGR26_620_…`), the same for the same gate in all three races, while YB numbers the
+# checkpoint IDS per race and no index is an offset into RaceSetup's course nodes (db.load_splits). The `split` table holds them,
+# filled by import-edition and by the live capture; a race with no such row is blank; "finish": the documented finish.
+# WHICH INDICES EXIST, reproducible from the tracked zegments fixtures (tests/fixtures/zegments.*.json, and
+# test_which_split_indices_each_race_holds_and_that_900_is_never_read reads them): 620 (Lanzarote) for 2026 and 2022 but NOT for 2018,
+# although the 2018 race had the gate — that absence belongs in the page's words, not in a guessed figure; 2411 (Hobart) for all
+# three; 4200 (Cape Horn) and 5500 (the finish) for all three, both of which this table reads elsewhere — Cape Horn as the
+# geographic crossing, the finish as the curated date. 1320 (Cape Town) is 2022's alone. INDEX 900 IS DIFFERENT WATER IN DIFFERENT
+# YEARS (2018: 15 deg S; 2022: Trindade) and must never be compared across races: it is not used here, and must not be added.
+MILESTONES = [("Lanzarote", "split", 620, None), ("Equator", "lat", 0.0, lambda lat, lon: -45 < lon < 0),
+              ("Cape of Good Hope", "lon", 18.4731, lambda lat, lon: lat < -30), ("Hobart", "split", 2411, None),
               ("Cape Horn", "lon", -67.2667, lambda lat, lon: lat < -50), ("Finish", "finish", None, None)]
 
 def ended(row):

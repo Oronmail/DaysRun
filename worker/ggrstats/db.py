@@ -88,6 +88,29 @@ def upsert_splits(conn, key, zeg):
                     on conflict (race_key, team_id, checkpoint_id) do update set stop_at=excluded.stop_at,
                     duration_s=excluded.duration_s, delta_best_s=excluded.delta_best_s, delta_preceding_s=excluded.delta_preceding_s""", rows)
 
+def load_splits(conn, key):
+    """{team_id: {checkpoint index: the time YB timed the boat through that checkpoint}} — the race's OWN record of its own gates,
+    which is what a gate milestone reads (editions.crossings).
+
+    THE INDEX, NEVER THE CHECKPOINT ID. Both come from YB's zegments file. The id is numbered per race, so 2022's Hobart gate and
+    2018's carry different ids; the index is YB's own checkpoint number, carried in the checkpoint's name (`GGR26_620_…`,
+    `Golden Globe Race 2022_620_…`) and THE SAME NUMBER FOR THE SAME GATE IN ALL THREE RACES — 620 off Lanzarote, 2411 at Hobart,
+    4200 at Cape Horn, 5500 at the finish. It is NOT an index into `RaceSetup.course.nodes`, which hold 511 (2026), 527 (2022) and
+    500 (2018) nodes: every gate index above 500 is out of range of every course, and nothing may be looked up by it there.
+
+    A row without a stop time is not a passage and is left out: blank, never guessed. A GHOST is left out too — a ghost is a
+    replay of an earlier race on this year's course, and YB PREDICTS its remaining stops: this year's zegments, taken at
+    15 Sep 21:58 UTC, already carries index-620 rows for the three ghosts stopping on 17, 19 and 21 September. Nothing that has
+    not happened may reach the page, and this is where it is refused, not two modules away. A split whose boat has no team row at
+    all is kept (the row cannot be a ghost's if there is no ghost to be)."""
+    out = {}
+    for tid, idx, at in conn.execute("""select s.team_id, s.checkpoint_index, extract(epoch from s.stop_at)::bigint from split s
+                                        left join team t on t.race_key = s.race_key and t.id = s.team_id
+                                        where s.race_key=%s and s.checkpoint_index is not null and s.stop_at is not null
+                                          and not coalesce(t.is_ghost, false)""", (key,)):
+        out.setdefault(tid, {})[idx] = int(at)
+    return out
+
 def _dur_s(text):
     """'1d 6h 18m 42s' -> seconds."""
     if not text: return None

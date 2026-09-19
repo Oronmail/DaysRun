@@ -22,12 +22,6 @@ def conn():
     yield c
     c.close()
 
-def seed_2026_course(conn):
-    """The 2026 race row alone: every fleet, past or present, is measured on that course line."""
-    from ggrstats import db
-    db.upsert_race(conn, "ggr2026", json.load(open(FIX / "RaceSetup.20260916.json")))
-    conn.commit()
-
 def seed_2026_fleet(conn):
     """The 2026 race, its teams and the whole master track up to the golden report."""
     from ggrstats import db
@@ -50,7 +44,8 @@ def rows(conn, q, args=()):
     return conn.execute(q, args).fetchall()
 
 def spy_on_compute(monkeypatch):
-    """Records what cmd_editions asks editions.compute for — the mark scale, the line and the page's own clock."""
+    """Records what cmd_editions asks editions.compute for — the course length, whether the grid is filled, the gates' own split
+    times and the page's own clock."""
     from ggrstats import editions
     real, seen = editions.compute, {}
     def spy(*a, **kw):
@@ -65,8 +60,7 @@ def test_2022_imported_from_a_folder_then_its_three_tables(conn, tmp_path, monke
     """The whole path for a past race: YB's three files in, the curated fleet and every fix stored, then the day tables of the
     page. The figures are those of the race, not of the plan: Guy deBoer went aground at 04:45 UTC on race day 14 and is
     therefore still racing at that day's 00:00 report."""
-    from ggrstats import config, editions_data, run
-    seed_2026_course(conn)
+    from ggrstats import editions_data, run
     n = run.cmd_import_edition(conn, "ggr2022", from_dir=folder(tmp_path, "ggr2022"))
     assert n > 5000
     names = dict(rows(conn, "select id, name from team where race_key='ggr2022'"))
@@ -79,9 +73,12 @@ def test_2022_imported_from_a_folder_then_its_three_tables(conn, tmp_path, monke
     assert len(rows(conn, "select id from team where race_key='ggr2022'")) == 16
 
     seen = spy_on_compute(monkeypatch)
-    out = run.cmd_editions(conn, "ggr2022", as_of=None)
-    assert seen["until"] is None and seen["args"][7] is True                                  # a race long finished, measured on the 2026 line
-    assert abs(seen["togo_marks"]["Lanzarote"] - config.MARK_TOGO_OBSERVED["Lanzarote"]) > 5  # the line's own figure, not YB's observed one
+    out = run.cmd_editions(conn, "ggr2022", as_of=None)                                       # no 2026 row in this database at all
+    assert seen["until"] is None and seen["args"][6] is True                                  # a race long finished; a past fleet's grid is filled
+    setup = json.load(open(FIX / "RaceSetup.ggr2022.json"))
+    assert abs(seen["args"][3] - setup["course"]["distance"] / 1.852) < 1e-9                  # measured against 2022's own course, 26,003.0 nm
+    assert abs(seen["args"][3] - 26003.0) < 0.1
+    assert seen["splits"][11][620] == 1663350825                                              # Simon Curwen's own Canary split, out of the database
     days = rows(conn, "select race_day, racing, fresh, leader_team_id from edition_day where race_key='ggr2022' order by race_day")
     assert days[0][0] == 1 and days[-1][0] >= 278                                             # to the last finisher (Jeremy Bagshaw, race day 278)
     assert len(days) == days[-1][0] and len(out["days"]) == len(days)
@@ -91,18 +88,25 @@ def test_2022_imported_from_a_folder_then_its_three_tables(conn, tmp_path, monke
     assert ms["Cape Horn"] == 164 and ms["Finish"] == 235
     assert "Lanzarote" in dict(rows(conn, "select milestone, race_day from edition_milestone where race_key='ggr2022' and team_id=14"))
     assert conn.execute("select count(*) from edition_boat_day where race_key='ggr2022' and team_id=14 and racing").fetchone()[0] == 14   # days 1 to 14
-    assert set(out["notes"]) == {"filled_slots", "stopped_legs", "interp_reports"}
+    assert set(out["notes"]) == {"filled_slots", "stopped_legs", "interp_reports", "measured_fixes"}
+    assert out["notes"]["measured_fixes"] == {}                                               # YB gave every fix of this sample a distance
+    assert seen["line"].total_nm == pytest.approx(setup["course"]["distance"] / 1.852, abs=0.1)   # and it is 2022's own line, for the ones it does not
     assert conn.execute("select count(*) from edition_boat_day where race_key='ggr2022'").fetchone()[0] == 5 * len(days)
 
 def test_2018_imported_from_a_folder_and_the_three_hourly_week_makes_runs(conn, tmp_path):
     """4 to 9 July 2018 the whole fleet reported every three hours, a rhythm the 4-hour grid meets at 00:00 and 12:00 only:
     without editions.fill_slots those six race days would show no run at all."""
     from ggrstats import run
-    seed_2026_course(conn)
     assert run.cmd_import_edition(conn, "ggr2018", from_dir=folder(tmp_path, "ggr2018")) > 2000
     assert len(rows(conn, "select id from team where race_key='ggr2018'")) == 17              # 17 starters; Francesco Cappelletti never crossed the line
     out = run.cmd_editions(conn, "ggr2018", as_of=None)
     assert out["notes"]["filled_slots"] > 0
+    # YB gave Mark Slats no distance to finish from 1 Jan 2019 to his finish; measured on 2018's own course line those 589 fixes
+    # come back, and with them the last month of the race — 179 reports the raw record would have left blank.
+    assert out["notes"]["measured_fixes"] == {68: 589}
+    late = rows(conn, """select race_day from edition_boat_day where race_key='ggr2018' and team_id=68
+                         and race_day between 184 and 214 and not fresh""")
+    assert [d for d, in late] == [211]                                                        # 30 of the 31 reports back; 28 Jan he missed his own
     week = rows(conn, """select race_day, count(run24_nm) from edition_boat_day where race_key='ggr2018' and race_day between 3 and 8
                          group by race_day order by race_day""")
     assert [d for d, _ in week] == [3, 4, 5, 6, 7, 8] and all(n > 0 for _, n in week), week
@@ -112,7 +116,6 @@ def test_the_import_fetches_only_three_endpoints_and_backs_up_into_the_races_own
     """Amendments 2 and 3: the leaderboard is not fetched (YB served 2018's as a 503 on the morning of 18 Sep 2026), and the raw
     files go to the past race's own folder of the bucket, never over the live race's snapshots."""
     from ggrstats import backup, decode, run, yb
-    seed_2026_course(conn)
     sample = json.load(gzip.open(FIX / "ggr2018.sample.json.gz", "rt"))
     asked, sent = {}, {}
     p = tmp_path / "AllPositions3.20180701T1000.gz"; p.write_bytes(b"gzipped")
@@ -129,7 +132,6 @@ def test_the_import_fetches_only_three_endpoints_and_backs_up_into_the_races_own
 
 def test_a_backup_failure_never_stops_the_import(conn, monkeypatch, tmp_path):
     from ggrstats import backup, decode, run, yb
-    seed_2026_course(conn)
     sample = json.load(gzip.open(FIX / "ggr2018.sample.json.gz", "rt"))
     p = tmp_path / "AllPositions3.20180701T1000.gz"; p.write_bytes(b"gzipped")
     monkeypatch.setattr(yb, "snapshot", lambda race, snapdir, session=None, now=None, names=None: {
@@ -145,13 +147,13 @@ def test_a_backup_failure_never_stops_the_import(conn, monkeypatch, tmp_path):
 
 def test_2026_writes_the_asked_day_with_ybs_own_distance_to_finish(conn, monkeypatch):
     """This year's fleet keeps YB's own distance to finish, as every other page of the site shows it, so no two pages disagree."""
-    from ggrstats import config, run
+    from ggrstats import run
     setup = seed_2026_fleet(conn)
     run.cmd_derive(conn, "ggr2026", T26, None)                                                # the 00:00 report published: race day 10
     seen = spy_on_compute(monkeypatch)
     out = run.cmd_editions(conn, "ggr2026", as_of=T26)
-    assert seen["until"] == T26 and seen["args"][7] is False                                  # the page's own clock; YB's own distances
-    assert seen["togo_marks"]["Lanzarote"] == config.MARK_TOGO_OBSERVED["Lanzarote"]
+    assert seen["until"] == T26 and seen["args"][6] is False                                  # the page's own clock; no slot of 2026 is filled
+    assert abs(seen["args"][3] - setup["course"]["distance"] / 1.852) < 1e-9                  # this year's own course, 25,754.5 nm
     assert [r[0] for r in rows(conn, "select race_day from edition_day where race_key='ggr2026'")] == [10]
     assert (out["days"][0]["racing"], out["days"][0]["fresh"]) == (16, 15)                    # 16 boats racing; one had not reported at 00:00
     golden = {b["id"]: b for b in json.load(open(FIX / "golden.snap.json"))["boats"]}
@@ -161,10 +163,32 @@ def test_2026_writes_the_asked_day_with_ybs_own_distance_to_finish(conn, monkeyp
     for tid, mg in fresh:
         assert abs((course_nm - mg) - golden[tid]["dtf"]) < 0.6, tid
     assert conn.execute("select count(*) from edition_boat_day where race_key='ggr2026'").fetchone()[0] == 16
-    assert conn.execute("select count(*) from edition_milestone where race_key='ggr2026'").fetchone()[0] == 0   # nobody had rounded Lanzarote by this report
+    assert seen["line"] is None                                                               # and no course line: a 2026 figure can only be YB's own
+    assert conn.execute("select count(*) from split where race_key='ggr2026'").fetchone()[0] == 0   # nothing captured yet, so the count below says nothing
+    assert conn.execute("select count(*) from edition_milestone where race_key='ggr2026'").fetchone()[0] == 0
     before = rows(conn, "select * from edition_boat_day where race_key='ggr2026' order by team_id")
     run.cmd_editions(conn, "ggr2026", as_of=T26)                                              # a second run changes nothing
     assert rows(conn, "select * from edition_boat_day where race_key='ggr2026' order by team_id") == before
+
+def test_2026_publishes_a_gate_from_ybs_own_split_row(conn):
+    """The live path end to end, which nothing tested before: YB's own zegments segment → db.upsert_splits → db.load_splits →
+    editions.crossings → a published milestone row, carrying YB's time TO THE SECOND. The seeded row is in YB's own shape, with
+    the checkpoint index (620) in the checkpoint's name as YB writes it, and a stop before the report the page is dated to."""
+    from ggrstats import run
+    seed_2026_fleet(conn)
+    run.cmd_derive(conn, "ggr2026", T26, None)
+    from ggrstats import db
+    rounded = 1789257600                                                                      # 13 Sep 2026 00:00 UTC, three days before the report
+    db.upsert_splits(conn, "ggr2026", {"course": [{"id": 77, "name": "GGR26_620_Lanzarote", "index": 620}],
+                                       "tags": [{"id": 1, "teams": [{"markerNo": 6, "name": "Damien",
+                                                 "segments": {"1-77": {"courseNodeId": 77, "start": (rounded - 86400) * 1000,
+                                                                       "stop": rounded * 1000, "durationTotal": 86400000}}}]}]})
+    conn.commit()
+    assert db.load_splits(conn, "ggr2026")[6][620] == rounded
+    run.cmd_editions(conn, "ggr2026", as_of=T26)
+    ms = rows(conn, """select team_id, milestone, extract(epoch from passed_at)::bigint, race_day
+                       from edition_milestone where race_key='ggr2026'""")
+    assert ms == [(6, "Lanzarote", rounded, 7)]                                               # YB's own second, and nobody else's gate
 
 def test_2026_without_a_published_report_stops_at_the_day_before(conn):
     """The page never shows a day derive has not published: at the 00:00 slot itself the last day stays yesterday's until the
@@ -237,13 +261,12 @@ class FakeArchive:
 
 def import_2018(conn, tmp_path):
     from ggrstats import run
-    seed_2026_course(conn)
     run.cmd_import_edition(conn, "ggr2018", from_dir=folder(tmp_path, "ggr2018"))
 
 def test_wind_is_fetched_batch_by_batch_at_the_slots_the_legs_use(conn, tmp_path, monkeypatch):
     """Each batch is stored before the next is asked for (weather.fetch_archive_wind is all-or-nothing), only at slots that END a
     leg — a slot with no predecessor can end none — and only up to --until-day: the free allowance is counted per location per day."""
-    from ggrstats import course, db, editions, editions_data, run, weather
+    from ggrstats import db, editions, editions_data, run, weather
     import_2018(conn, tmp_path)
     fake = FakeArchive()
     monkeypatch.setattr(weather, "fetch_archive_wind", fake)
@@ -251,8 +274,8 @@ def test_wind_is_fetched_batch_by_batch_at_the_slots_the_legs_use(conn, tmp_path
     assert stored == conn.execute("select count(*) from edition_wind where race_key='ggr2018'").fetchone()[0] > 0
     assert len(fake.calls) >= 2 and all(len(c) <= 20 for c in fake.calls)
     start = editions_data.EDITIONS["ggr2018"]["start"]
-    line = course.Line(conn.execute("select raw_setup from race where key='ggr2026'").fetchone()[0]["course"]["nodes"])
     ends, fixes = db.team_ends(conn, "ggr2018"), db.load_fixes(conn, "ggr2018")
+    _, line = run._measure(conn, "ggr2018", with_line=True)                                   # the same line the import itself used
     want = set()
     for tid, fx in fixes.items():
         slots = editions.past_slots(fx, start, ends[tid]["ended_at"], line)
@@ -300,49 +323,3 @@ def test_an_error_that_is_not_the_archives_wall_is_not_swallowed(conn, tmp_path,
     monkeypatch.setattr(weather, "fetch_archive_wind", boom)
     with pytest.raises(ValueError):
         run.cmd_import_edition_wind(conn, "ggr2018", pace_s=0.0, until_day=2)
-
-# ---------------------------------------------------------------- the two alarms that guard the swept-bearing measure
-
-def test_the_live_fleet_entering_a_corners_wedge_is_warned_about(conn, caplog, monkeypatch):
-    """This year's figures are YB's own and the site is checked against them to 0.07 nm, so a live fix inside a corner's wedge
-    would be smoothed into a disagreement with the answer key — which is exactly why the general form of this rule was refused.
-    NOR C.1.3 holds the fleet out at Trindade by requiring the island to be left to port, but the NOR forces the side AT the
-    island, not on the approach: a boat 24.6 nm east of the line abeam node 85 is already inside. Today the master fixture clears
-    the wedge by 5.35 deg of bearing and NOTHING ELSE WOULD NOTICE if that changed, so run._wedge_watch counts it on every derive.
-    Here the fleet is moved bodily into the wedge to prove the alarm is wired, then left where it is to prove it stays quiet."""
-    import logging
-    from ggrstats import course, editions_data, run
-    seed_2026_fleet(conn)
-    nodes = json.load(open(FIX / "RaceSetup.20260916.json"))["course"]["nodes"]
-    line, apex = course.Line(nodes), nodes[88]
-    called = []
-    real = run._wedge_watch
-    monkeypatch.setattr(run, "_wedge_watch", lambda l, r, f: called.append(r) or real(l, r, f))
-    with caplog.at_level(logging.WARNING, logger="ggrstats"):
-        assert run.cmd_editions(conn, "ggr2026", as_of=T26)["days"]
-    assert called == ["ggr2026"]                                                   # the live derive really does count, every time
-    assert not [r for r in caplog.records if "wedge" in r.message], caplog.text     # and the real fleet is outside it
-    monkeypatch.undo()
-
-    inside = {1: [{"at": T26, "lat": apex["lat"] + 3.0, "lon": apex["lon"] + 6.0, "dtf": 21000 * 1852}]}
-    assert line.adjusts(inside[1][0]["lat"], inside[1][0]["lon"], 88)              # the position really is in the wedge
-    caplog.clear()
-    with caplog.at_level(logging.WARNING, logger="ggrstats"):
-        assert run._wedge_watch(line, "ggr2026", inside) == 1
-    assert "wedge" in caplog.text and "Trindade" in caplog.text
-
-def test_a_corner_that_has_dropped_out_of_the_course_warns_this_year_and_refuses_a_past_race(conn, caplog, monkeypatch, tmp_path):
-    """The line is built from race.raw_setup as the capture worker last stored it, and YB EDITS that structure mid-race — it added
-    a whole Chichester tag on 18 Sep 2026. course._corner returns None rather than raising when a node has moved, so that a course
-    change can never take the hourly capture down; without this alarm Van Den Heede's 1,173 nm leap would be back on a public page
-    with every test green and nothing in the log. The live path warns and carries on; the past-races rebuild refuses outright."""
-    import logging
-    from ggrstats import course, run
-    seed_2026_fleet(conn)
-    monkeypatch.setattr(course, "CORNERS", [dict(course.CORNERS[0], turn=-40.0)])   # as if YB had renumbered the nodes
-    with caplog.at_level(logging.WARNING, logger="ggrstats"):
-        assert run.cmd_editions(conn, "ggr2026", as_of=T26)["days"]                 # this year still derives
-    assert "Trindade" in caplog.text and "no longer holds" in caplog.text
-    run.cmd_import_edition(conn, "ggr2022", from_dir=folder(tmp_path, "ggr2022"))
-    with pytest.raises(RuntimeError, match="no longer holds Trindade"):
-        run.cmd_editions(conn, "ggr2022", as_of=None)                               # the past-races page must not publish that

@@ -37,13 +37,15 @@ export function series(days: EditionDay[], year: string, field: SeriesField, max
 
 export const raceDayLabel = (raceDay: number, asOf: string) => `day ${raceDay} · ${dayMon(asOf)}`;
 
-/** Miles of this year's course still to sail to the point where the earlier race ended (both figures on the 2026 line), said
- *  roughly: a course is not a ruler. */
+/** How much further this year's skipper has to sail to have made good what that skipper's earlier race made good before it ended,
+ *  said roughly: a course is not a ruler. Since 19 Sep 2026 every fleet is measured on ITS OWN course, so the two figures are
+ *  miles made good on courses 903 nm apart and the difference names no course at all — it is a rough distance still to go, not a
+ *  point of anyone's line. */
 export function toPass(nowMg: number, endMg: number): string {
   const d = endMg - nowMg;
   if (d <= 0) return "past that point";
-  if (d < 500) return `about ${Math.round(d / 10) * 10} nm to that point`;
-  return `about ${nm(Math.round(d / 100) * 100)} nm of this year’s course to go to that point`;
+  if (d < 500) return `about ${Math.round(d / 10) * 10} nm to go to where that race ended`;
+  return `about ${nm(Math.round(d / 100) * 100)} nm to go to where that race ended`;
 }
 
 /** Rows of this year cut to the page's own as-of clock: the worker already leaves out a milestone passed after the report

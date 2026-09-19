@@ -1,13 +1,20 @@
 # worker/ggrstats/editions.py
 """The fleets of past races beside this year's. Pure functions on plain dicts; times in Unix seconds UTC; distances in nm.
 
-Every fleet goes through the worker's own rules (grid.resample, grid.window, stats.detect_restart, perf.point_of_sail) once its
-fixes have been measured on the 2026 course line (course.Line): a boat of 2018 and a boat of 2026 at the same spot then show the
-same figure, and no two pages of the site disagree. A boat's race ends at the documented date (editions_data), never when her
-tracker falls silent. Two things a past fleet needs that this year's does not: the 2018 fleet reported every three hours for a
-week, a rhythm the 4-hour grid meets only twice a day (fill_slots), and a boat that is not moving (perf.STOPPED_KN, perf.sailing —
-the same rule the live pages use) is left out of the fleet's figures for exactly as long as she lies there, never for the rest
-of the race; her own row keeps her own run, her own record and her place."""
+EVERY FLEET KEEPS YB'S OWN DISTANCE TO FINISH AND IS MEASURED AGAINST ITS OWN COURSE'S LENGTH, and the fleets are compared race
+day for race day (the owner's decision, 19 Sep 2026). No fix is projected onto another year's course line: the three courses are
+25,754.5 (2026), 26,003.0 (2022) and 25,099.9 (2018) nm, and the page says so in words rather than pretending one yardstick fits
+all three. The figures are therefore the same source every other page of the site already uses, so no two pages disagree by
+construction. The comparison that needs no course at all — the equator, the Cape of Good Hope, Cape Horn — is the geographic
+crossing, and the gates that are a race's own (Lanzarote, Hobart) come from that race's own YB split time.
+
+Every fleet goes through the worker's own rules (grid.resample, grid.window, stats.detect_restart, perf.point_of_sail). A boat's
+race ends at the documented date (editions_data), never when her tracker falls silent. Three things a past fleet needs that this
+year's does not: the 2018 fleet reported every three hours for a week, a rhythm the 4-hour grid meets only twice a day
+(fill_slots); YB gave some fixes of a past race no distance to finish at all, and those, and only those, are measured on that
+race's OWN course line (measure_missing), because grid.resample drops a fix without one as in-port noise; and a boat that is not
+moving (perf.STOPPED_KN, perf.sailing — the same rule the live pages use) is left out of the fleet's figures for exactly as long
+as she lies there, never for the rest of the race; her own row keeps her own run, her own record and her place."""
 import bisect, statistics
 from datetime import datetime, timezone
 from . import perf
@@ -17,19 +24,6 @@ from .stats import detect_restart, position_text, RUN24_LIMIT_NM, LEG_LIMIT_KN
 DAY = 86400
 RESTART_WINDOW_S = 7 * DAY           # NOR C.1.2 lets a boat return and start again only within seven days of the gun; later, a fix
                                      # outside the marina after one inside it is an ARRIVAL (2022 held Damien Guillou to this window)
-MARK_PIN_TOL_NM = 0.001              # inside a concave corner's dead wedge (course.py's apex snap) the nearest point of the course
-                                     # line IS the vertex, so a fix there reads that vertex's own along-course figure to floating-
-                                     # point precision — 906 past-fleet fixes do this, 25 boats at Lanzarote from as far as 58 nm
-                                     # away — and a mark's own togo is that same vertex's figure (course.mark_togo, same _nearest).
-                                     # A fix merely pinned to the mark's vertex must not be read as HAVING REACHED it: crossings
-                                     # therefore requires the boat's distance to finish to read at least this far below the mark's
-                                     # own before calling it passed. Measured on the samples: rounding dtf to the nearest metre
-                                     # (on_line) leaves a pinned fix reading 0.00017 nm ABOVE the Lanzarote mark's own figure (node
-                                     # 28, still 58 nm off) and up to 0.0049 nm BELOW the Hobart Gate's (node 258, where Jean-Luc
-                                     # Van Den Heede's own position that day was in fact at the gate, sub-metre away). 0.001 nm sits
-                                     # between the two: no metre-rounding accident is ever read as a mark reached, but a boat truly
-                                     # there still counts. This is not the margin above (a fix pinned to a vertex needing to clear a
-                                     # rounding accident, not a live announcement made early); it changes no crossing in the samples.
 
 def day_zero(start_at):
     """00:00 UTC of the start date: race day N is this plus N days (the site's rule: a race day is a UTC calendar date)."""
@@ -50,7 +44,12 @@ def fill_slots(fixes, max_gap_s=3 * 3600 + SLOT_TOL_S):
     fleet reported every three hours, which the grid meets at 00:00 and 12:00 only: without this the trackers were sending MORE
     often than usual and the site would show no run, no leg and no miles for six days. A slot is filled only when the two
     original fixes either side are at most max_gap_s apart (3 h 20 min), so a real silence is never papered over; the position is
-    linear in time between them, the short way round the antimeridian. An added fix is never itself interpolated from."""
+    linear in time between them, the short way round the antimeridian. An added fix is never itself interpolated from.
+
+    The distance to finish is interpolated the same way, and for the same reason the position is: grid.resample DROPS a fix
+    without one (in-port tracker noise), so a filled slot that carried none would be thrown away again and the three-hourly week
+    would have no run after all. Both neighbours must have one, or the added fix carries none and is dropped — blank, never
+    guessed."""
     fx = sorted(fixes, key=lambda f: f["at"])
     if len(fx) < 2:
         return fx
@@ -64,19 +63,66 @@ def fill_slots(fixes, max_gap_s=3 * 3600 + SLOT_TOL_S):
         if t - p["at"] <= SLOT_TOL_S or q["at"] - t <= SLOT_TOL_S or q["at"] - p["at"] > max_gap_s:
             continue                                                     # a fix already holds this slot, or the silence is longer than the grid
         f = (t - p["at"]) / (q["at"] - p["at"])
-        added.append({"at": t, "lat": p["lat"] + f * (q["lat"] - p["lat"]), "lon": _wrap(p["lon"] + f * _wrap(q["lon"] - p["lon"])), "interp": True})
+        add = {"at": t, "lat": p["lat"] + f * (q["lat"] - p["lat"]), "lon": _wrap(p["lon"] + f * _wrap(q["lon"] - p["lon"])), "interp": True}
+        if p.get("dtf") and q.get("dtf"):                                # falsy IS missing, as in grid.resample: a dtf of nought is no figure
+            add["dtf"] = round(p["dtf"] + f * (q["dtf"] - p["dtf"]))
+        added.append(add)
     return sorted(fx + added, key=lambda f: f["at"]) if added else fx
 
 def on_line(fixes, line):
-    """The same fixes with dtf replaced by the distance to finish on THIS course line, in metres (what grid reads). A fix on the
-    finish line keeps one metre, so that resample does not drop it as in-port noise. The forward-only search is widened by the
-    silence before the fix — a boat that has not reported for a week may be a thousand miles on — and the interp flag rides through."""
+    """THE RETIRED COMMON YARDSTICK, kept but no longer on the page's path (19 Sep 2026): the same fixes with dtf replaced by the
+    distance to finish on ONE course line, in metres (what grid reads), so that two fleets of different years could be compared
+    mile for mile. The page now keeps YB's own distance for every fleet and measures each against its own course, because the
+    projection could not deliver what it promised — a boat of 2018 and a boat of 2026 at the same spot do NOT show the same
+    figure, for structural reasons course.py's corner table documents. This stays because course.Line, course.CORNERS and their
+    tests are the record of exactly why, and the only way back to one yardstick if it is ever wanted again.
+
+    A fix on the finish line keeps one metre, so that resample does not drop it as in-port noise. The forward-only search is
+    widened by the silence before the fix — a boat that has not reported for a week may be a thousand miles on — and the interp
+    flag rides through."""
     out, i0, prev = [], 0, None
     for f in sorted(fixes, key=lambda f: f["at"]):
         togo, i0 = line.togo(f["lat"], f["lon"], i0, ahead=40 + (int((f["at"] - prev) // (4 * 3600)) if prev is not None else 0))
         out.append({"at": f["at"], "lat": f["lat"], "lon": f["lon"], "dtf": max(1, round(togo * 1852)), "interp": bool(f.get("interp"))})
         prev = f["at"]
     return out
+
+def measure_missing(fixes, line):
+    """(the same fixes, how many were measured): a fix YB gave NO distance to finish takes the distance measured on `line` —
+    THAT RACE'S OWN course line, never another year's — and every fix YB did give one for keeps it byte for byte. YB's own figure
+    is always the first answer; this is only for where there is none.
+
+    Why it is needed at all: grid.resample drops a fix whose distance to finish is nought, a rule written for in-port tracker
+    noise on the first days. YB's 2018 record gives Mark Slats nought for all 589 of his fixes from 1 Jan 2019 04:10 UTC (race
+    day 183.8, mid-Atlantic) to his finish on race day 214.6, so without this the second boat of that race is blank — no miles
+    made good, no run, no place, out of the fleet's median — for the last month of it. A PAST fleet only (prepare's `fill`): this
+    year's figures must equal YB's own, which is what every other page of the site shows.
+
+    THE STRAIGHT LINE TO THE FINISH IS A FLOOR, and it is not a fudge: no route to the finish can be shorter than the great
+    circle to it, while the polyline's perpendicular foot can be — a boat far off the course line is placed at the foot, which
+    slides her up the line without her having sailed there. Measured against YB's OWN distances, on every fix of both samples
+    that carries one: the plain foot reads up to 319.2 nm LESS than YB for Jean-Luc Van Den Heede, who came home up the Atlantic
+    900 nm west of the 2018 course line, and the same shape appears for Simon Curwen and Kirsten Neuschäfer in 2022. With the
+    floor his 95th-percentile error falls from 194.9 to 70.0 nm and no boat of either sample moves further from YB by one metre.
+    It matters here and not in theory: without it Mark Slats reads 1,514 nm to go on race day 200 of 2018 against Van Den Heede's
+    1,554 of YB's own, so the page would put Slats in the lead of a race he never led. With it he reads 1,572 and is second, as
+    he was to the finish. (test_the_measure_reproduces_ybs_own_figures_where_yb_gave_them.)
+
+    The search runs forward from the leg the last fix landed on, widened by the silence before this one, exactly as the retired
+    on_line did it, and it runs over EVERY fix so that a measured one is looked for from where the boat really was. A fix on the
+    finish line keeps one metre, or resample would drop it as noise again. The count is the run's own note: a page that shows a
+    figure of ours rather than YB's has to be able to say so."""
+    out, i0, prev, n = [], 0, None, 0
+    fin = line.nodes[-1]
+    for f in sorted(fixes, key=lambda f: f["at"]):
+        togo, i0 = line.togo(f["lat"], f["lon"], i0, ahead=40 + (int((f["at"] - prev) // (4 * 3600)) if prev is not None else 0))
+        prev = f["at"]
+        if f.get("dtf"):
+            out.append(f)
+            continue
+        out.append(dict(f, dtf=max(1, round(max(togo, gc_nm(f["lat"], f["lon"], fin["lat"], fin["lon"])) * 1852)), measured=True))
+        n += 1
+    return out, n
 
 def run_at(slots, k, t0=0):
     """One run rule, used for the day's run and for the record alike: the six 4-hour legs ending at slot k with a fix at every
@@ -109,14 +155,22 @@ def running_best(slots, start_at, restart):
         out.append(best)
     return out
 
-def prepare(fixes, start_at, ended_at=None, ended_how=None, line=None):
+def prepare(fixes, start_at, ended_at=None, ended_how=None, fill=False, line=None):
     """Everything one boat needs for a whole race, computed once: her fixes cut at the documented end (for a past fleet also
-    filled to the grid and measured on the 2026 line), the fixes she really sent, the slots, the restart (read off those reported
-    fixes, and only inside NOR C.1.2's seven days), the miles sailed as a running sum and the best run at every slot. compute() calls this once per boat; each race day then costs a lookup. line None: this year's fleet, whose
-    fixes already carry YB's own distance to finish and whose grid is the live site's — no slot of 2026 is ever filled."""
+    measured where YB gave no distance, and filled to the grid), the fixes she really sent, the slots, the restart (read off
+    those reported fixes, and only inside NOR C.1.2's seven days), the miles sailed as a running sum and the best run at every
+    slot. compute() calls this once per boat; each race day then costs a lookup. Every fleet keeps YB's own distance to finish,
+    whatever year it sailed. fill False: this year's fleet, whose grid is the live site's — no slot of 2026 is ever filled, and
+    no fix of 2026 is ever measured on a line, or this page and the live pages would disagree about which reports a boat made and
+    about how far she had to go. line: THAT RACE'S OWN course line, read only for a fix YB left without a distance to finish
+    (measure_missing); None measures nothing, and the fix is dropped by grid.resample as it always was. The measuring comes
+    BEFORE the fill, so that the three-hourly week's added slots interpolate between two figures rather than between none."""
     fx = cut(sorted(fixes, key=lambda f: f["at"]), ended_at)
-    if line is not None:
-        fx = on_line(fill_slots(fx), line)
+    measured = 0
+    if fill:
+        if line is not None:
+            fx, measured = measure_missing(fx, line)
+        fx = fill_slots(fx)
     slots = resample(fx, start_at)
     ks = sorted(slots)
     cum = [0.0]
@@ -128,11 +182,13 @@ def prepare(fixes, start_at, ended_at=None, ended_how=None, line=None):
         restart = None                                                   # a finisher coming home is not a boat starting again
     return {"fixes": fx, "real": real, "real_ats": [f["at"] for f in real], "slots": slots, "ks": ks, "ats": [slots[k]["at"] for k in ks],
             "cum": cum, "restart": restart, "best": running_best(slots, start_at, restart), "ended_at": ended_at, "ended_how": ended_how,
-            "filled": sum(1 for f in slots.values() if f.get("interp"))}
+            "filled": sum(1 for f in slots.values() if f.get("interp")), "measured": measured}
 
-def past_slots(fixes, start_at, ended_at, line):
-    """The slots a past boat's figures are built on, so that the wind import fetches the model wind at exactly the times the legs use."""
-    return resample(on_line(fill_slots(cut(sorted(fixes, key=lambda f: f["at"]), ended_at)), line), start_at)
+def past_slots(fixes, start_at, ended_at, line=None):
+    """The slots a past boat's figures are built on, so that the wind import fetches the model wind at exactly the times the legs
+    use. It IS prepare's own pipeline for a past fleet, called rather than spelt again: written twice, the two drift apart and
+    the archive is asked for a slot the page has no leg at, or not asked for one it has."""
+    return prepare(fixes, start_at, ended_at, fill=True, line=line)["slots"]
 
 def _upto(ks, k):
     return bisect.bisect_right(ks, k) - 1                                # the index of the last slot at or before k, or -1
@@ -260,20 +316,23 @@ def fleet_day(rows, T, start_at, wind):
         out.update(wind)
     return out
 
-def _interp(t0, v0, t1, v1, v):
-    return t0 + (v - v0) / (v1 - v0) * (t1 - t0)
-
-def crossings(fixes, start_at, ended_how, ended_at, togo_marks, milestones, until=None):
+def crossings(fixes, start_at, ended_how, ended_at, splits, milestones, until=None):
     """{milestone: the time it was passed}. A latitude is crossed SOUTHBOUND and a longitude EASTBOUND, and only the FIRST such
     crossing counts: the return across the equator months later does not overwrite the outward one, and a boat that rounded the
     Cape of Good Hope's longitude and then turned back to Cape Town keeps the crossing she made. Each is interpolated between the
-    two fixes either side and counts only where the milestone's own guard holds. A mark of the 2026 course is passed when the
-    distance to finish falls to the mark's own by at least MARK_PIN_TOL_NM, interpolated the same way and with NO OTHER margin: a
-    margin exists so that the live site never announces a rounding early, and a table of history wants the crossing itself. The
-    tolerance is not that margin — it exists only to refuse a fix pinned to the mark's own vertex (see MARK_PIN_TOL_NM), which reads
-    that vertex's figure while the boat may still be miles short of it. togo_marks must therefore be on the same scale as the
-    fixes (see compute). The finish is the documented one. Nothing after the page's own clock: until is the report of the last day
-    computed, None for a race long finished."""
+    two fixes either side and counts only where the milestone's own guard holds. Those three — the equator, the Cape of Good Hope,
+    Cape Horn — need no course at all and mean the same thing in every year, which is why they are the page's strongest comparison.
+
+    A GATE of the race (Lanzarote, Hobart) is THAT RACE'S OWN YB SPLIT TIME, read from `splits` ({YB's checkpoint index in its
+    zegments file: the time YB timed this boat through it}, db.load_splits — the same index for the same gate in all three races,
+    620 off Lanzarote and 2411 at Hobart, and no offset into any course's nodes) — the race's own record of its own water, never a
+    threshold on a distance measured on somebody else's course. A gate with no split row is BLANK, with the reason in the page's
+    words: 2018 has no Lanzarote split in YB's record although the race had the gate. A split later than the boat's documented end
+    is not hers (Gregor McGuckin's 2018 tracker went through YB's 1903 gate three weeks after the dismasting, under tow — not a
+    gate this table reads, but the same tracker goes on sending through the ones it does).
+
+    The finish is the documented one. Nothing after the page's own clock: until is the report of the last day computed, None for a
+    race long finished."""
     out = {}
     fx = [f for f in fixes if f["at"] >= start_at and (until is None or f["at"] <= until + SLOT_TOL_S)]
     late = lambda t: until is not None and t > until
@@ -282,16 +341,10 @@ def crossings(fixes, start_at, ended_how, ended_at, togo_marks, milestones, unti
             if ended_how == "finished" and ended_at is not None and not late(ended_at):
                 out[name] = ended_at
             continue
-        if kind == "mark":
-            thr = togo_marks[value]
-            measured = [f for f in fx if f.get("dtf")]                   # a fix without a distance is in-port tracker noise, as least_dtf_nm has it
-            for p, q in zip(measured, measured[1:]):
-                a, b = p["dtf"] / 1852.0, q["dtf"] / 1852.0
-                if a > thr and b <= thr - MARK_PIN_TOL_NM:
-                    t = _interp(p["at"], a, q["at"], b, thr)
-                    if not late(t):
-                        out[name] = t
-                    break
+        if kind == "split":
+            t = splits.get(value)
+            if t is not None and t >= start_at and (ended_at is None or t <= ended_at) and not late(t):
+                out[name] = t
             continue
         for p, q in zip(fx, fx[1:]):
             if kind == "lat":
@@ -308,24 +361,25 @@ def crossings(fixes, start_at, ended_how, ended_at, togo_marks, milestones, unti
                 break
     return out
 
-def compute(fixes_by_team, ends, start_at, line, course_nm, days, winds, on_this_line, milestones=None, togo_marks=None, until=None):
-    """Everything the page needs for one race: fixes_by_team {team_id: fixes}; ends {team_id: {ended_at, ended_how}} (empty for a
-    race still running); days: the race days to (re)compute; winds as wind_day takes; on_this_line False for 2026, whose fixes
-    carry YB's own distance to finish, so that no two pages of the site disagree; togo_marks None: no milestones this run.
+def compute(fixes_by_team, ends, start_at, course_nm, days, winds, fill, milestones=None, splits=None, until=None, line=None):
+    """Everything the page needs for one race: fixes_by_team {team_id: fixes}, carrying YB's OWN distance to finish for this race;
+    ends {team_id: {ended_at, ended_how}} (empty for a race still running); course_nm THIS race's own course length, which is what
+    miles made good are counted against; days: the race days to (re)compute; winds as wind_day takes; fill True for a past fleet,
+    whose three-hourly week the 4-hour grid would otherwise miss (fill_slots), False for this year's, whose grid is the live
+    site's; splits {team_id: {checkpoint index: time}} as crossings reads them, None for no milestones this run; line THIS race's
+    own course line, read only where YB gave a fix no distance to finish (measure_missing), None for this year's fleet.
 
-    togo_marks MUST be on the same scale as the fixes, and the caller owns that choice. A fleet measured on the line
-    (on_this_line True) takes `course.mark_togo(nodes, config.MARKS, observed={})` — the line's OWN figure at each mark, because
-    those boats' distances come from that same projection; at Lanzarote the line reads about 8 nm more than YB's observed
-    24,469.5, and mixing the two cost Guy deBoer a rounding already made. This year's fleet (on_this_line False, YB's own
-    distances) takes `course.mark_togo(nodes, config.MARKS)`, YB's observed figure where one is known.
+    No fix is measured on another year's course. The three courses differ by 903 nm and the page says so in words; what is
+    compared straight across is the race DAY, and the geographic crossings, which need no course at all.
 
-    notes says what the two rules of a past fleet added and left out, for the run's log: filled_slots, the slots fill_slots
-    supplied; stopped_legs, the boat-days whose report's own 4-hour leg read under perf.STOPPED_KN (not moving) and so left the
-    fleet's mean, best-of-day, best-so-far and wind bands for that report; interp_reports, the boat-days whose own report was a
-    filled slot and are therefore not fresh."""
+    notes says what the rules of a past fleet added and left out, for the run's log: filled_slots, the slots fill_slots supplied;
+    stopped_legs, the boat-days whose report's own 4-hour leg read under perf.STOPPED_KN (not moving) and so left the fleet's
+    mean, best-of-day, best-so-far and wind bands for that report; interp_reports, the boat-days whose own report was a filled
+    slot and are therefore not fresh; measured_fixes {team_id: n}, the fixes whose distance to finish is this worker's own rather
+    than YB's, which is what the page's "Read with care" names."""
     from . import editions_data
     milestones = editions_data.MILESTONES if milestones is None else milestones
-    boats = {tid: prepare(fx, start_at, ends.get(tid, {}).get("ended_at"), ends.get(tid, {}).get("ended_how"), line if on_this_line else None)
+    boats = {tid: prepare(fx, start_at, ends.get(tid, {}).get("ended_at"), ends.get(tid, {}).get("ended_how"), fill, line)
              for tid, fx in fixes_by_team.items()}
     dz, stopped_legs, interp, out = day_zero(start_at), 0, 0, {"days": [], "boat_days": [], "milestones": [], "notes": {}}
     for d in days:
@@ -337,9 +391,10 @@ def compute(fixes_by_team, ends, start_at, line, course_nm, days, winds, on_this
         legs = {tid: day_legs(b["slots"], T, t0_at(b, T)) for tid, b in boats.items() if rows[tid]["racing"]}
         out["days"].append(fleet_day(rows, T, start_at, wind_day(legs, winds) if winds else None))
         out["boat_days"].extend(rows.values())
-    if togo_marks is not None:
+    if splits is not None:
         for tid, b in boats.items():
-            for name, t in crossings(b["fixes"], start_at, b["ended_how"], b["ended_at"], togo_marks, milestones, until).items():
+            for name, t in crossings(b["fixes"], start_at, b["ended_how"], b["ended_at"], splits.get(tid, {}), milestones, until).items():
                 out["milestones"].append({"team_id": tid, "milestone": name, "passed_at": int(t), "race_day": race_day_of(t, start_at)})
-    out["notes"] = {"filled_slots": sum(b["filled"] for b in boats.values()), "stopped_legs": stopped_legs, "interp_reports": interp}
+    out["notes"] = {"filled_slots": sum(b["filled"] for b in boats.values()), "stopped_legs": stopped_legs, "interp_reports": interp,
+                    "measured_fixes": {tid: b["measured"] for tid, b in boats.items() if b["measured"]}}
     return out

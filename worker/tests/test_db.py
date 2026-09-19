@@ -119,6 +119,31 @@ def test_a_zegments_tag_without_teams_is_skipped(conn):
     db.upsert_splits(conn, "ggr2026", zeg)
     conn.commit()
     assert conn.execute("select count(*) from split where race_key='ggr2026'").fetchone()[0] == before
+def test_load_splits_gives_back_the_passages_a_real_boat_made_and_nothing_else(conn):
+    """The path the page's gates really read (editions.crossings ← db.load_splits ← the `split` table), and three of its rules had
+    no test at all. A row with no stop time is not a passage. A row YB gave no checkpoint index cannot be named against another
+    race's gate and is skipped. And a GHOST — a replay of an earlier race on this year's course — is left out here: YB PREDICTS a
+    ghost's remaining stops, and this year's zegments, taken at 15 Sep 21:58 UTC, already carries index-620 rows for the three of
+    them stopping on 17, 19 and 21 September. db.team_ends' ghost filter keeps them off the page today, two modules away; a
+    prediction must be refused where the rows are read."""
+    from ggrstats import db
+    setup = json.load(open(FIX / "RaceSetup.20260916.json"))
+    db.upsert_race(conn, "ggr2026", setup); db.upsert_teams(conn, "ggr2026", setup)
+    db.upsert_splits(conn, "ggr2026", json.load(open(FIX / "zegments.20260915T2159.json")))
+    conn.commit()
+    ghosts = [t for t, in conn.execute("select id from team where race_key='ggr2026' and is_ghost")]
+    assert {940, 957, 978} <= set(ghosts)
+    predicted = [t for t, in conn.execute("""select team_id from split where race_key='ggr2026' and checkpoint_index=620
+                                             and stop_at > '2026-09-15T21:58:32Z'""")]
+    assert sorted(predicted) == [940, 957, 978]                               # three stops YB has not seen happen
+    got = db.load_splits(conn, "ggr2026")
+    assert not set(got) & set(ghosts), got                                    # not one predicted passage comes back
+    assert got[6] == {300: 1788992765}                                        # a real boat's own completed segment, to the second
+    conn.execute("""insert into split values ('ggr2026', 6, 9001, 'no stop yet', 620, null, null, null, null, null),
+                                             ('ggr2026', 6, 9002, 'no index',   null, null, '2026-09-14T10:00:00Z', null, null, null)""")
+    conn.commit()
+    assert db.load_splits(conn, "ggr2026")[6] == {300: 1788992765}            # neither row is a passage: blank, never guessed
+
 def test_past_teams_and_edition_tables_roundtrip(conn):
     from ggrstats import db
     setup = {"title": "Golden Globe Race 2018", "course": {"distance": 46484.9, "nodes": []},

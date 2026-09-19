@@ -152,56 +152,23 @@ def cmd_verify(conn, race, as_of, golden_path):
 IMPORT_ENDPOINTS = ("RaceSetup", "zegments", "AllPositions3")    # an import reads no leaderboard, and YB served 2018's as a 503
 WIND_WAIT_S = (60, 300)                                          # the archive refused once, twice: wait, ask again, then stop and resume later
 
-def _setup_2026(conn):
-    """The 2026 RaceSetup: the course line every fleet of the page is measured on, past or present."""
-    row = conn.execute("select raw_setup from race where key=%s", ("ggr2026",)).fetchone()
+def _measure(conn, race, with_line=False):
+    """THIS race's own course length in nm, which is what its own fleet's miles made good are counted against. Every fleet keeps
+    YB's own distance to finish, so each is measured on the course it actually sailed and no fleet needs another year's RaceSetup:
+    25,754.5 (2026), 26,003.0 (2022), 25,099.9 (2018) nm. The three differ by 903 nm and the page says so in words, rather than
+    projecting two fleets onto a third's course line to hide it — a projection that could not deliver what it promised.
+
+    `course.distance` is YB's own course sum in km, and course.Line reproduces it to a tenth of a mile; taking it straight from
+    the stored RaceSetup means the page's denominator is YB's figure, not a sum of ours.
+
+    with_line: also THIS race's own course line, plain (no corner smoothing — the swept-bearing measure belongs to this year's
+    Trindade dog-leg and to no past course). A PAST race only, and read for one thing only: a fix YB gave no distance to finish at
+    all (editions.measure_missing). This year's path never asks for it, so no fix of 2026 can be anything but YB's own figure."""
+    row = conn.execute("select raw_setup from race where key=%s", (race,)).fetchone()
     if not row:
-        raise RuntimeError("the 2026 race row is missing: every fleet is measured on the 2026 course line, so capture this year's race first")
-    return row[0]
-
-def _measure(conn, race):
-    """(line, the course's length in nm, each mark's distance to finish, put the fixes on the line?) for one fleet. A past fleet
-    is measured on the 2026 line and so reads the LINE's own figure at each mark; this year's fleet keeps YB's own distances and
-    so YB's observed figure (editions.compute's docstring — mixing the two scales hid a rounding Guy deBoer had made).
-
-    The line is built from `race.raw_setup` as the capture worker last stored it, and YB EDITS that structure mid-race — it added a
-    whole Chichester tag on 18 Sep 2026. A renumbered node would drop a row of course.CORNERS silently (course._corner returns None
-    rather than raising, so that a course change can never take the hourly capture down), and Jean-Luc Van Den Heede's 1,173 nm
-    leap across Trindade would be back on a public page with every test still green. So the row is checked here on EVERY derive:
-    a warning on the live path, which must keep running, and a refusal on the past-races rebuild, which must not publish that."""
-    setup = _setup_2026(conn)
-    nodes = setup["course"]["nodes"]
-    line = course.Line(nodes)
-    missing = [r["name"] for r in course.CORNERS if r["name"] not in {c["name"] for c in line.corners}]
-    if missing:
-        msg = (f"the 2026 course line no longer holds {', '.join(missing)}: YB's RaceSetup has moved or renumbered the corner, so "
-               f"the swept-bearing measure is off and the past fleets' figures there are the nearest-point ones again")
-        if race != config.RACE_KEY:
-            raise RuntimeError(msg)                                          # a rebuild of the past-races page must not publish that
-        log.warning("%s", msg)
-        monitoring.warn("a course corner has dropped out of the measure", corners=",".join(missing))
-    if race == config.RACE_KEY:
-        return line, setup["course"]["distance"] / 1.852, course.mark_togo(nodes, config.MARKS), False
-    return line, line.total_nm, course.mark_togo(nodes, config.MARKS, observed={}), True
-
-def _wedge_watch(line, race, fixes):
-    """How many fixes of THIS year's fleet lie inside a corner's wedge, warning the moment it is not nought. Those figures are YB's
-    own and the site is checked against them to 0.07 nm, so smoothing one would be a disagreement with the answer key by
-    construction — the reason the general form of this rule was refused. NOR C.1.3 holds the fleet out at Trindade by requiring the
-    island to be left to port, but the NOR forces the side AT the island, not on the approach: measured 19 Sep 2026, a boat 28 nm
-    east of the line at node 85, or 9.3 nm at node 87, is already inside, and this year's fleet clears the wedge by 6.6 deg of
-    bearing only because it is ten days out. Nothing else would notice, so this does."""
-    n = 0
-    for fx in fixes.values():
-        i0 = 0
-        for f in sorted(fx, key=lambda f: f["at"]):
-            _, i0 = line.togo(f["lat"], f["lon"], i0)
-            n += line.adjusts(f["lat"], f["lon"], i0)
-    if n:
-        log.warning("%s: %d fix(es) of this year's fleet lie inside a course corner's wedge (%s); the live figures are YB's own and "
-                    "must not be smoothed", race, n, ", ".join(c["name"] for c in line.corners))
-        monitoring.warn("this year's fleet has entered a course corner's wedge", fixes=n)
-    return n
+        raise RuntimeError(f"the {race} race row is missing: import or capture that race before computing its days")
+    nm = row[0]["course"]["distance"] / 1.852
+    return (nm, course.Line(row[0]["course"]["nodes"], corners=())) if with_line else nm
 
 def cmd_import_edition(conn, race, from_dir=None):
     """A past race into the database, once: RaceSetup, the split times and every fix from YB's own endpoints, or from a folder
@@ -243,11 +210,11 @@ def cmd_editions(conn, race, as_of, since=None, fixes=None):
     weather call, no re-derive."""
     from . import editions, editions_data
     start = editions_data.EDITIONS[race]["start"]
-    line, course_nm, togo, on_the_line = _measure(conn, race)
+    past = race != config.RACE_KEY
+    course_nm, line = _measure(conn, race, with_line=True) if past else (_measure(conn, race), None)
     fixes = fixes if fixes is not None else db.load_fixes(conn, race)
     ends = db.team_ends(conn, race)                                          # ghosts are not in it; a past race's rows are the curated ones
     if race == config.RACE_KEY:
-        _wedge_watch(line, race, fixes)                                      # the live fleet must never enter a corner's wedge
         winds, now = db.load_winds(conn, race), as_of if as_of else latest_slot()
         last = editions.race_day_of(now - 1, start)                          # the last 00:00 report before this slot
         if now % 86400 == 0 and conn.execute("select 1 from fleet_stat where race_key=%s and as_of=%s", (race, db.ts(now))).fetchone():
@@ -263,8 +230,8 @@ def cmd_editions(conn, race, as_of, since=None, fixes=None):
     if not days:
         log.info("editions %s: no race day to write yet", race)
         return {"days": [], "boat_days": [], "milestones": [], "notes": {}}
-    out = editions.compute({tid: fx for tid, fx in fixes.items() if tid in ends}, ends, start, line, course_nm, days, winds,
-                           on_the_line, togo_marks=togo, until=until)
+    out = editions.compute({tid: fx for tid, fx in fixes.items() if tid in ends}, ends, start, course_nm, days, winds,
+                           past, splits=db.load_splits(conn, race), until=until, line=line)
     db.replace_edition_days(conn, race, out["days"])
     db.replace_edition_boat_days(conn, race, out["boat_days"])
     db.replace_edition_milestones(conn, race, out["milestones"])             # the whole race's table is the unit of replacement
@@ -281,7 +248,7 @@ def _nm(v):
 
 def cmd_editions_check(conn, race=None):
     """The standing cross-check the design asks for: every stored day of THIS year's race, boat by boat, against the figures the
-    live pages show. Two readings, and each can differ for a reason the line makes visible.
+    live pages show. Two readings, and each can differ for a reason the line it prints makes visible.
     Distance to finish, 0.6 nm: boat_stat takes the latest fix up to 20 minutes AFTER the report (stats.at_or_before), these rows
     the fix NEAREST it (grid.resample), and a fast tracker gives both — so both fix times are printed.
     The day's run, 0.05 nm, and only where all six legs of that report have a distance: a run boat_stat shows across a missing
@@ -316,8 +283,10 @@ def cmd_editions_check(conn, race=None):
 def cmd_import_edition_wind(conn, race, pace_s=2.0, until_day=None, batch=20, max_failures=3, session=None, sleep=None):
     """Model wind at the end of every 4-hour leg of a past race, from Open-Meteo's archive: at exactly the slots the page's own
     figures are built on (editions.past_slots), and only at a slot that ENDS a leg — a slot with no predecessor ends none, and
-    asking for it would spend an allowance that is counted per location per day. `until_day` stops at that race day, so the owner
-    can take the race a few days at a time. One batch at a time, each stored and committed before the next is asked for, because
+    asking for it would spend an allowance that is counted per location per day. past_slots IS prepare's own pipeline for a past
+    fleet, with the race's own course line behind it, so the archive is asked for exactly the slots the page has a leg at and for
+    no other — the run that measures Mark Slats's last month back onto the page must fetch its wind too. `until_day` stops at
+    that race day, so the owner can take the race a few days at a time. One batch at a time, each stored and committed before the next is asked for, because
     one archive call is all-or-nothing (weather.fetch_archive_wind); `pace_s` between calls. The archive's own wall (429, 5xx, a
     body that is not JSON) is waited out and the SAME batch asked again; after max_failures in a row the run stops cleanly and
     says what is left — it inserts only, so the next run asks for exactly what is still missing. Any other error is a programming
@@ -325,7 +294,7 @@ def cmd_import_edition_wind(conn, race, pace_s=2.0, until_day=None, batch=20, ma
     from . import editions, editions_data
     sleep = sleep or time.sleep
     start = editions_data.EDITIONS[race]["start"]
-    line = _measure(conn, race)[0]
+    _, line = _measure(conn, race, with_line=True)                           # the same line cmd_editions measures this fleet with
     fixes, ends, points = db.load_fixes(conn, race), db.team_ends(conn, race), {}
     for tid, fx in fixes.items():
         if tid not in ends:

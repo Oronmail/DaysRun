@@ -52,11 +52,14 @@ def worst_leg(track, walked):
 
 _PREPARED = {}
 def prepared(race):
-    """Every sampled boat of a past race, cut at its documented end and measured on the 2026 line under BOTH measures."""
+    """Every sampled boat of a past race, cut at its documented end and measured on the 2026 line under BOTH measures. No page
+    does this any more (the fleets keep YB's own distance on their own courses); the projection is built here, in the tests that
+    are the record of why it was abandoned."""
     if race not in _PREPARED:
         start = editions_data.EDITIONS[race]["start"]
         sample = {t["id"]: sorted(t["moments"], key=lambda m: m["at"]) for t in json.load(gzip.open(FIX / f"{race}.sample.json.gz", "rt"))}
-        _PREPARED[race] = {r["id"]: {m: editions.prepare(sample[r["id"]], start, r["ended_at"], r["ended_how"], l)
+        on = lambda fx, line, ended_at: editions.on_line(editions.fill_slots(editions.cut(fx, ended_at)), line)
+        _PREPARED[race] = {r["id"]: {m: editions.prepare(on(sample[r["id"]], l, r["ended_at"]), start, r["ended_at"], r["ended_how"])
                                      for m, l in (("rounded", LINE), ("plain", PLAIN))}
                            for r in editions_data.TEAMS[race] if r["id"] in sample}
     return _PREPARED[race]
@@ -99,8 +102,8 @@ def test_the_corner_table_holds_trindade_and_nothing_else():
 def test_a_course_that_fails_any_admission_criterion_is_not_smoothed():
     """The row names node indices; the code asserts on the course itself that those nodes really are the corner the row describes,
     before it smooths anything. Every criterion is exercised here, because a row applied to the wrong water is far worse than a row
-    that does not apply at all. Failing quietly is the safe direction on the live capture path — run._measure is what says so out
-    loud, and refuses outright on the past-races rebuild (test_editions_cli.py)."""
+    that does not apply at all. Failing quietly is the safe direction: no page reads this measure now, so nothing published can
+    move when a row drops out, and this test is what pins the geometry against the fixture."""
     row = dict(course.CORNERS[0])
     bend = lambda **kw: course.Line(NODES, corners=[dict(row, **kw)]).corners
     assert bend() and bend()[0]["name"] == "Trindade"                            # the real course, unmodified: the row applies
@@ -246,7 +249,7 @@ def test_2022_fleet_is_bit_identical_under_the_rule():
     Trindade to be left to port, so a boat heading 196 deg passes WEST of it — the convex side, where the wedge does not reach.
     Every boat of the whole 2022 fleet crossed 20 deg 30' S west of the corner, by 0.2 to 205 nm.
 
-    The comparison is on the RAW float Line.togo returns, never on the fix's own dtf: editions.on_line has already rounded that
+    The comparison is on the RAW float Line.togo returns, never on the fix's own dtf: on_line has already rounded that
     to whole metres, so half a metre of drift would pass a test whose name promises the same float. On the whole 2022 fleet,
     24,151 raw floats, not one differs (19 Sep 2026, rehearsal import)."""
     n = 0
@@ -267,9 +270,10 @@ def test_the_live_fleet_is_held_out_of_the_wedge_by_bearing_alone():
     a boat 24.6 nm east of the line abeam node 85, or 8.2 nm abeam node 87, is already inside the wedge, and the closest any fix
     of the master fixture comes is 5.35 deg of bearing — a margin it has only because the fleet is ten days out.
 
-    So the margin is pinned here, and run._wedge_watch counts it on every derive and warns the moment it is not nought
-    (test_editions_cli.py). If this test fails because the margin has shrunk, that is the fleet standing east of the line, and
-    the answer to it is a decision about the measure, not a wider tolerance."""
+    So the margin is pinned here. While the past fleets were projected onto this line, the worker also counted it on every derive
+    and warned the moment it was not nought; nothing is projected now, so this test is the only place it is measured. If it fails
+    because the margin has shrunk, that is the fleet standing east of the line, and the answer to it is a decision about the
+    measure, not a wider tolerance."""
     worst = 360.0
     for t in json.load(gzip.open(FIX / "AllPositions3.master.20260916T0230.json.gz")):
         if t["id"] in editions_data.EDITIONS["ggr2026"]["skip"]: continue
