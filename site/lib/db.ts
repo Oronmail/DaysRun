@@ -111,7 +111,8 @@ export async function legsBetween(fromIso: string, toIso: string): Promise<{ tea
 
 // The Past races page (db/migrations/0005_editions.sql): the fleets of 2018 and 2022 measured on THEIR OWN courses, from YB's
 // own distance to finish, plus this year's own daily row so the three can be read the same way (the fleets are compared race
-// day for race day, never mile for mile: the three courses differ by 903 nm). One row per race per race day.
+// day for race day; early in a race the fleets sail the same water, and once the courses part the share of each race's own
+// course is the fairer reading, the three being 903 nm apart end to end). One row per race per race day.
 export type EditionDay = {
   race_key: string; race_day: number; as_of: string;
   racing: number; finished: number; fresh: number;                                     // boats in the race; home; with a fix within 20 min of the report

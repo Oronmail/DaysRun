@@ -3,9 +3,10 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { YEARS, YEAR_LABEL, latestDay, sameDay, series, toPass, pointTip, windShares, takeaways, raceDayLabel, milestonesAsOf, bestSoFar, COURSE_NM, shareOfCourse, fleetWind, fraction, windWords, latDM, roadRow, roadWords, boatSeries, attemptCard, milestoneCells, sevenDayMean, START_AT, startWords, RULE, raceDayOf, figuresLine, axisMax, axisTicks, SHARED_WATER_NM, spanWords, NEAR_DAYS, SMOOTH_POINTS, smoothWords, onTheRoad, thinnestRunDay, methodWords, cautionWords, runsNote, RETURNING, VETERAN_HULLS, MILESTONE_ORDER } from "../lib/editions";
+import { YEARS, YEAR_LABEL, latestDay, sameDay, series, toPass, pointTip, windShares, takeaways, raceDayLabel, milestonesAsOf, bestSoFar, COURSE_NM, shareOfCourse, fleetWind, fraction, windWords, latDM, roadRow, roadWords, boatSeries, attemptCard, milestoneCells, sevenDayMean, START_AT, startWords, RULE, raceDayOf, figuresLine, axisMax, axisTicks, SHARED_WATER_NM, spanWords, NEAR_DAYS, SMOOTH_POINTS, smoothWords, onTheRoad, roadView, extremes, placed, thinnestRunDay, methodWords, cautionWords, runsNote, RETURNING, VETERAN_HULLS, MILESTONE_ORDER } from "../lib/editions";
 import type { EditionDay, EditionBoatDay, EditionMilestone } from "../lib/db";
 import { DEFINITIONS } from "../lib/text";
+import { viewHeight } from "../lib/geo";
 
 const day = (race_key: string, race_day: number, o: Partial<EditionDay> = {}): EditionDay => ({
   race_key, race_day, as_of: "2026-09-18T00:00:00+00:00", racing: 16, finished: 0, fresh: 16,
@@ -579,5 +580,84 @@ describe("the glossary", () => {
   it("carries no day count that goes stale overnight, and no measure the page no longer uses", () => {
     expect(glossary).not.toContain("mile for mile");
     expect(glossary).not.toMatch(/\b(ten|eleven|twelve|thirteen|fourteen|fifteen|twenty) days\b/i);
+  });
+});
+
+// ——— Fix round 3: the owner's road-taken chart, and the final review's two defects ———
+
+describe("the view of the road taken", () => {
+  const pts = [{ lat: 25.34, lon: -15.87 }, { lat: 29.70, lon: -13.90 }, { lat: 39.90, lon: -10.23 }];
+  it("keeps the latitude the data gives and widens the longitude until the box is landscape", () => {
+    const v = roadView(pts, 640);
+    expect([v.lat0, v.lat1]).toEqual([23, 42]);                                   // the data's own latitudes, with the page's padding
+    expect(v.lon0).toBeLessThan(-15.87); expect(v.lon1).toBeGreaterThan(-10.23);  // every boat inside it
+    expect(v.width).toBe(640);
+    const shape = 640 / viewHeight(v);
+    expect(shape).toBeGreaterThan(1.2); expect(shape).toBeLessThan(1.5);          // about four to three
+    expect(viewHeight(v)).toBeLessThan(560);                                      // the tall portrait chart was 730 px
+  });
+  it("centres the widened view on the boats, so the fleet is not pushed to an edge", () => {
+    const v = roadView(pts, 640);
+    expect(Math.abs((v.lon0 + v.lon1) / 2 - (-15.87 + -10.23) / 2)).toBeLessThan(1);
+  });
+  it("never cuts a boat off to make the shape, when the fleet is wider than the shape asks", () => {
+    const wide = [{ lat: 25, lon: -60 }, { lat: 30, lon: 0 }];
+    const v = roadView(wide, 640);
+    expect(v.lon0).toBeLessThanOrEqual(-63); expect(v.lon1).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("the two ends of a fleet's span of latitude", () => {
+  const rows = [
+    bd("ggr2018", 12, { team_id: 85, lat: 27.43 }), bd("ggr2018", 12, { team_id: 68, lat: 33.58 }),
+    bd("ggr2018", 12, { team_id: 8, lat: 30.10 }), bd("ggr2018", 12, { team_id: 94, lat: 43.37, racing: false, finished: false }),
+  ];
+  const name = (id: number) => ({ 85: "Philippe Péché", 68: "Mark Slats", 8: "Jean-Luc Van Den Heede", 94: "Ertan Beskardes" })[id] ?? "—";
+  it("names the northernmost and the southernmost boat on the road, of the set the chart plots", () => {
+    const e = extremes(rows, name)!;
+    expect(e.north).toEqual({ who: "Mark Slats", lat: 33.58 });
+    expect(e.south).toEqual({ who: "Philippe Péché", lat: 27.43 });               // the boat out of the race is not an end of the fleet
+  });
+  it("agrees with the span of latitude printed above it", () => {
+    const e = extremes(rows, name)!;
+    expect(Math.round((e.north.lat - e.south.lat) * 60)).toBe(roadRow(rows).spanNm);
+  });
+  it("is blank, never half a row, for a fleet with fewer than two boats on the road", () => {
+    expect(extremes([rows[0]], name)).toBeNull();
+    expect(extremes([], name)).toBeNull();
+  });
+});
+
+describe("a latitude in degrees and minutes", () => {
+  it("carries whole minutes into the degrees, as the worker's own position_text does", () => {
+    expect(latDM(29.99920)).toBe("30°00.0′N");
+    expect(latDM(-33.99930)).toBe("34°00.0′S");
+    expect(latDM(29.696)).toBe("29°41.8′N");
+    expect(latDM(-34.5)).toBe("34°30.0′S");
+    expect(latDM(0)).toBe("00°00.0′N");
+  });
+  it("uses the worker's own rule — tenths of a minute rounded first — and is held to it", () => {
+    const py = fs.readFileSync(path.join(__dirname, "../../worker/ggrstats/stats.py"), "utf8");
+    expect(py).toContain("tenths = round(abs(v) * 600)");
+    expect(py).toContain("d, m = divmod(tenths, 600)");
+  });
+});
+
+describe("the fleet a place is out of", () => {
+  it("counts the boats the worker gave a place that day — the fresh ones with a distance, and the finishers", () => {
+    const rows = [
+      bd("ggr2022", 200, { team_id: 11, place: 1, racing: false, finished: true }),
+      bd("ggr2022", 200, { team_id: 7, place: 13 }),
+      bd("ggr2022", 200, { team_id: 4, place: null, fresh: false, racing: false }),
+    ];
+    expect(placed(rows)).toBe(2);
+  });
+  it("never says a place out of fewer boats than the place itself (a finisher is in the order too)", () => {
+    const fleet = [...Array(12).keys()].map(i => bd("ggr2022", 200, { team_id: i + 1, place: i + 1 }))
+      .concat(bd("ggr2022", 200, { team_id: 20, place: 13 }), bd("ggr2022", 200, { team_id: 21, place: null, fresh: false }));
+    const of = placed(fleet);
+    expect(of).toBe(13);
+    const tip = pointTip(fleet[12], { name: "Kirsten Neuschäfer", first_name: null, yacht: "Minnehaha", model: "Cape George 36" }, of);
+    expect(tip.lines[2]).toContain("13th of 13 on day 200");
   });
 });

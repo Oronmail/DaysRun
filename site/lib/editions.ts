@@ -1,6 +1,7 @@
 // site/lib/editions.ts — the Past races page's words and shapes, pure. Years read newest first everywhere; a sailor of a past race
 // is named in full, this year's skippers by first name; no sentence carries a number that was not computed here.
 import type { EditionDay, EditionBoatDay, EditionMilestone } from "./db";
+import type { View } from "./geo";
 import type { Tip } from "./tips";
 import { dayMon, hhmm, nm } from "./format";
 
@@ -124,8 +125,8 @@ export function fleetWind(days: EditionDay[], year: string, maxDay: number): Fle
 }
 
 const NUM = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty"];
-/** A share of legs said the way the site's prose says it. Twelve days of weather are shared by a whole fleet and a point either
- *  way is noise, so the sentence gives the size of the share, not a false precision. */
+/** A share of legs said the way the site's prose says it. A whole fleet shares its weather and a point either way is noise, so
+ *  the sentence gives the size of the share, not a false precision. */
 export function fraction(pct: number): string {
   if (pct <= 0) return "none";
   if (pct >= 70) return "most";
@@ -159,11 +160,14 @@ export function windWords(x: { raceDay: number; now: FleetWind; y2022?: FleetWin
   return `${strength} ${where}`;
 }
 
-/** A latitude in degrees and decimal minutes, the way the worker writes a position (stats.position_text); the site has no other
- *  formatter for one, and a fleet's middle latitude is read beside the boats' own positions. */
+/** A latitude in degrees and decimal minutes. The site has no other formatter for one (lib/geo's latLabel is whole degrees, for
+ *  a graticule; every boat's own position comes from the worker as text), so this is the TypeScript twin of the latitude half of
+ *  stats.position_text, and it follows that function's rule exactly: round to whole TENTHS OF A MINUTE first, then split, so
+ *  59.97′ carries into the degrees (29.9992 is 30°00.0′N, never 29°60.0′N). A test holds the rule to the worker's source. */
 export function latDM(lat: number): string {
-  const d = Math.floor(Math.abs(lat)), m = (Math.abs(lat) - d) * 60;
-  return `${String(d).padStart(2, "0")}°${m.toFixed(1).padStart(4, "0")}′${lat < 0 ? "S" : "N"}`;
+  const tenths = Math.round(Math.abs(lat) * 600);
+  const d = Math.floor(tenths / 600), m = tenths % 600;
+  return `${String(d).padStart(2, "0")}°${(m / 10).toFixed(1).padStart(4, "0")}′${lat < 0 ? "S" : "N"}`;
 }
 export type RoadRow = { boats: number; midLat: number | null; spanNm: number | null };
 /** Where a fleet lay on one race day, of the boats that reported: how many, the middle boat's latitude, and how far the fleet
@@ -171,6 +175,11 @@ export type RoadRow = { boats: number; midLat: number | null; spanNm: number | n
 /** The boats "the road taken" is about, for the chart and for the table beside it alike: a boat that reported at the day's
  *  report AND is still in its own race. A tracker sending from a quay after a retirement is neither on the road nor in the
  *  count (it would drag the middle latitude and the span with it), and a boat that missed the report has no position today. */
+/** How many boats of a fleet carry a place that day, which is what a place is OUT OF. The worker orders the boats that reported
+ *  with a distance to finish PLUS the finishers, so the count of fresh rows is not it: a day with a finisher in it would print
+ *  "13th of 12". Count the places themselves. */
+export const placed = (rows: EditionBoatDay[]) => rows.filter(r => r.place != null).length;
+
 export const onTheRoad = (b: EditionBoatDay) => b.fresh && b.lat != null && b.lon != null && (b.racing || b.finished);
 export function roadRow(rows: EditionBoatDay[]): RoadRow {
   const lats = rows.filter(onTheRoad).map(r => r.lat!).sort((a, b) => a - b);
@@ -178,6 +187,31 @@ export function roadRow(rows: EditionBoatDay[]): RoadRow {
   const mid = lats.length % 2 ? lats[(lats.length - 1) / 2] : (lats[lats.length / 2 - 1] + lats[lats.length / 2]) / 2;
   return { boats: lats.length, midLat: mid, spanNm: Math.round((lats[lats.length - 1] - lats[0]) * 60) };
 }
+/** The view of the ocean the road-taken chart draws: the latitudes the day's boats give (with the page's own padding), and a
+ *  longitude span widened until the box is landscape — a fleet strung out north to south makes a tall narrow chart of a wide
+ *  ocean, and the reader loses the coasts it is sailing between. The widening is centred on the boats and never narrower than
+ *  the boats themselves need. Pure: the projection stays lib/geo's (PointsChart and FleetMap draw with it), and this only
+ *  chooses the box. */
+export function roadView(points: { lat: number; lon: number }[], width: number, aspect = 4 / 3, padLat = 2, padLon = 3): View {
+  const lats = points.map(p => p.lat), lons = points.map(p => p.lon);
+  const lat0 = Math.floor(Math.min(...lats)) - padLat, lat1 = Math.ceil(Math.max(...lats)) + padLat;
+  const cos = Math.cos((lat0 + lat1) / 2 * Math.PI / 180);
+  const want = aspect * (lat1 - lat0) / cos;                                  // lib/geo scales longitude by cos(mid-latitude)
+  const have = (Math.ceil(Math.max(...lons)) + padLon) - (Math.floor(Math.min(...lons)) - padLon);
+  const half = Math.max(want, have) / 2, mid = (Math.min(...lons) + Math.max(...lons)) / 2;
+  return { lon0: Math.floor(mid - half), lon1: Math.ceil(mid + half), lat0, lat1, width };
+}
+
+/** The northernmost and the southernmost boat of a fleet on the road that day, with the sailor's name: the two ends of the span
+ *  of latitude the table above prints, so the reader can see who they are. Blank for a fleet with fewer than two boats on the
+ *  road — one boat is not a span. */
+export function extremes(rows: EditionBoatDay[], name: (teamId: number) => string): { north: { who: string; lat: number }; south: { who: string; lat: number } } | null {
+  const on = rows.filter(onTheRoad).sort((a, b) => b.lat! - a.lat!);
+  if (on.length < 2) return null;
+  const end = (b: EditionBoatDay) => ({ who: name(b.team_id), lat: b.lat! });
+  return { north: end(on[0]), south: end(on[on.length - 1]) };
+}
+
 const LANDFALL: [string, number][] = [["Lanzarote", 28.96], ["Madeira", 32.75], ["Lisbon", 38.7]];
 /** Each fleet's middle boat named against the nearest landfall of the passage south — a latitude means little on its own — and
  *  which fleet was the longest from north to south. */

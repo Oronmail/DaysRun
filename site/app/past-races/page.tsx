@@ -9,7 +9,7 @@ import PointsChart from "@/components/PointsChart";
 import WindShares from "@/components/WindShares";
 import { Legend } from "@/components/Charts";
 import { editionDays, editionBoatDays, editionBoatSeries, editionMilestones, teamsOf, type EditionDay, type EditionBoatDay, type PastTeam } from "@/lib/db";
-import { YEARS, YEAR_LABEL, YEAR_COLOR, YEAR_TEXT, START_AT, RETURNING, VETERAN_HULLS, MILESTONE_ORDER, latestDay, sameDay, series, axisMax, axisTicks, boatSeries, sevenDayMean, pointTip, onTheRoad, fleetWind, windWords, takeaways, roadRow, roadWords, latDM, attemptCard, milestoneCells, milestonesAsOf, bestSoFar, shareOfCourse, raceDayLabel, figuresLine, spanWords, smoothWords, NEAR_DAYS, thinnestRunDay, methodWords, cautionWords, runsNote, type Year } from "@/lib/editions";
+import { YEARS, YEAR_LABEL, YEAR_COLOR, YEAR_TEXT, START_AT, RETURNING, VETERAN_HULLS, MILESTONE_ORDER, latestDay, sameDay, series, axisMax, axisTicks, boatSeries, sevenDayMean, pointTip, onTheRoad, placed, roadView, extremes, fleetWind, windWords, takeaways, roadRow, roadWords, latDM, attemptCard, milestoneCells, milestonesAsOf, bestSoFar, shareOfCourse, raceDayLabel, figuresLine, spanWords, smoothWords, NEAR_DAYS, thinnestRunDay, methodWords, cautionWords, runsNote, type Year } from "@/lib/editions";
 import { nm, kn, dayMon, sgn } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 export const revalidate = 900;
@@ -41,6 +41,7 @@ export default async function Page() {
   const words = takeaways({ now: today, y2022: by.ggr2022, y2018: by.ggr2018, leaderFirst: who("ggr2026", today.leader_team_id) });
   const wind = Object.fromEntries(YEARS.map(y => [y, fleetWind(days, y, D)])) as Record<Year, ReturnType<typeof fleetWind>>;
   const road = Object.fromEntries(YEARS.map(y => [y, roadRow(B[y])])) as Record<Year, ReturnType<typeof roadRow>>;
+  const ends = Object.fromEntries(YEARS.map(y => [y, extremes(B[y], id => who(y, id))])) as Record<Year, ReturnType<typeof extremes>>;
   const msAsOf = milestonesAsOf(ms, today.as_of);
   const mgOn = (y: Year, id: number) => B[y].find(b => b.team_id === id)?.mg_nm ?? null;
   // This year's lines stop at D — the day every tile, table and sentence on the page is of. A past race's whole record is in,
@@ -52,12 +53,14 @@ export default async function Page() {
   // degrees of latitude past the boats that were racing.
   const marks = YEARS.flatMap(y => B[y].filter(onTheRoad).map(b => {
     const t = teamOf(y, b.team_id);
-    return { lat: b.lat!, lon: b.lon!, year: y, tip: pointTip(b, t ?? { name: "Unknown", first_name: null, yacht: null, model: null }, by[y]?.fresh ?? B[y].length),
+    return { lat: b.lat!, lon: b.lon!, year: y, tip: pointTip(b, t ?? { name: "Unknown", first_name: null, yacht: null, model: null }, placed(B[y])),
       href: y === "ggr2026" ? `/skipper/${b.team_id}` : undefined, label: `${t?.name ?? "Unknown"}, ${YEAR_LABEL[y]}` };
   }));
-  const lats = marks.map(p => p.lat), lons = marks.map(p => p.lon);
-  const view = { lon0: Math.floor(Math.min(...lons)) - 3, lon1: Math.ceil(Math.max(...lons)) + 3, lat0: Math.floor(Math.min(...lats)) - 2, lat1: Math.ceil(Math.max(...lats)) + 2, width: 330 };
-  const LAND = [{ name: "Lisbon", lat: 38.72, lon: -9.2 }, { name: "Madeira", lat: 32.75, lon: -17.0, side: "l" as const },
+  // A fleet strung out north to south makes a tall narrow chart of a wide ocean: the view keeps the boats' own latitudes and
+  // widens the longitude until the box is landscape, so the coasts the fleets are sailing between come into it (the owner, 19 Sep).
+  const view = marks.length ? roadView(marks, 640) : null;
+  const LAND = [{ name: "Lisbon", lat: 38.72, lon: -9.2 }, { name: "Azores", lat: 38.55, lon: -28.0 },
+    { name: "Madeira", lat: 32.75, lon: -17.0, side: "l" as const }, { name: "Morocco", lat: 31.4, lon: -7.6 },
     { name: "Lanzarote", lat: 29.05, lon: -13.45 }, { name: "Gran Canaria", lat: 27.95, lon: -15.6, side: "l" as const }];
 
   const LEG: [string, string][] = YEARS.map(y => [YEAR_LABEL[y], YEAR_COLOR[y]]);
@@ -86,8 +89,6 @@ export default async function Page() {
   return <Shell active="Past races" dateline={<Dateline asOf={today.as_of} raceDay={D} />} title="PAST RACES"
     note={words.lead.replace(/^On day \d+ /, "")}
     sub={<>the fleet of 2026 against the fleets of 2018 and 2022, race day for race day<br /><span style={{ fontSize: 16 }}>{figuresLine(D, today.as_of)}</span></>}>
-    <div style={{ maxWidth: 860, fontSize: 19, lineHeight: 1.5 }}>The Ghost race sets each boat against one past voyage. This page sets the whole fleet against the whole fleets of the two modern races: every boat of 2022 and 2018, from YB’s archives, measured by the same rules as this year’s, each fleet on the course it sailed.</div>
-
     {/* The day, in four tiles: three years in each, newest first. */}
     <div className="tiles past">{TILES.map(t => <div className="tile" key={t.k}><div className="k">{t.k}</div>
       {same.map(d => { const y = d.race_key as Year, [v, s] = t.f(d, y); return yearRow(y, v, s); })}</div>)}</div>
@@ -126,13 +127,14 @@ export default async function Page() {
       </div>
     </div>
 
-    {/* The road taken: the chart of the ocean, and the three fleets of the same race day beside it. */}
-    <div className="stack" style={{ display: "grid", gridTemplateColumns: "360px minmax(0,1fr)", gap: 40 }}>
+    {/* The road taken: the chart of the ocean, and the three fleets of the same race day beside it. Two columns of their own
+        width — on a wide screen the spare room stays at the right edge instead of pulling a three-row table across 1,400 px. */}
+    <div className="stack" style={{ display: "grid", gridTemplateColumns: "640px minmax(0,600px)", gap: 40 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <div className="rule-title"><div className="label">The road taken</div></div>
         <div className="small" style={{ fontStyle: "italic" }}>every boat that reported on day {D} of its own race · point at a boat, or tap it</div>
         <Legend items={LEG} />
-        {marks.length > 0 && <div className="panel"><PointsChart view={view} points={marks} labels={LAND} /></div>}
+        {view && <div className="panel"><PointsChart view={view} points={marks} labels={LAND} /></div>}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div className="rule-title"><div className="label">Three fleets on the same day</div><div className="small" style={{ fontStyle: "italic" }}>race day {D}</div></div>
@@ -142,6 +144,11 @@ export default async function Page() {
             <td className="num r">{road[y].spanNm == null ? "—" : `${nm(road[y].spanNm)} nm`}</td></tr>)}</tbody></table></div>
         <div style={PARA}>{roadWords(D, road.ggr2026, road.ggr2022, road.ggr2018)}</div>
         <div className="small">Latitude alone does not say who is winning: a boat further south can be further from the finish. The miles are in the charts above.</div>
+        <div className="rule-title" style={{ marginTop: 4 }}><div className="label">North to south</div><div className="small" style={{ fontStyle: "italic" }}>the two ends of each fleet on day {D}</div></div>
+        <table className="data"><thead><tr><th>Fleet</th><th>Northernmost boat</th><th className="r">at</th><th>Southernmost boat</th><th className="r">at</th></tr></thead>
+          <tbody>{YEARS.map(y => { const e = ends[y]; return <tr key={y}><td className="mont" style={{ fontWeight: 700, color: YEAR_TEXT[y] }}>{YEAR_LABEL[y]}</td>
+            <td>{e ? e.north.who : "—"}</td><td className="num r">{e ? latDM(e.north.lat) : "—"}</td>
+            <td>{e ? e.south.who : "—"}</td><td className="num r">{e ? latDM(e.south.lat) : "—"}</td></tr>; })}</tbody></table>
       </div>
     </div>
 
