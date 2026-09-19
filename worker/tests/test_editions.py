@@ -310,7 +310,7 @@ def test_an_added_fix_carries_a_distance_between_its_neighbours_and_none_when_a_
 
 def test_a_past_boat_keeps_her_water_where_yb_gave_no_distance_and_every_distance_figure_stays_blank():
     """YB's 2018 record gives Mark Slats a distance to finish of nought for every fix from 1 Jan 2019 04:10 UTC (race day 183.8,
-    3°S 28°W) to his finish on race day 214.6 — 589 reports of real mid-ocean sailing, which grid.resample drops as in-port noise
+    3°S 28°W) to the finish on race day 214.6 — 589 reports of real mid-ocean sailing, which grid.resample drops as in-port noise
     because nought is how a tracker on a quay reads. A PAST fleet KEEPS them: the position is YB's and is true, so the run, the
     legs, the miles sailed, the position and the freshness are all hers. What YB never gave is not invented — no distance to
     finish, no miles made good, no place. BLANK, NEVER GUESSED: a measure of ours in the same fleet row as YB's own figures
@@ -484,24 +484,44 @@ def test_a_stopped_boat_counts_again_the_moment_she_sails_not_for_the_rest_of_th
     assert editions.fleet_day(rows2, START + 12 * SLOT_S, START, None)["runs_n"] == 1
     assert editions.fleet_day(rows3, START + 18 * SLOT_S, START, None)["runs_n"] == 2
 
-def test_a_stopped_boat_is_not_the_fleet_s_best_run_so_far_while_she_lies_there():
-    """best_sofar_* is the fleet's headline, not just a lookup of whoever's personal best is largest: a boat currently
-    stopped is left out of it too, on the same report-by-report rule as mean_run_nm and best_run_nm."""
-    T = START + 12 * SLOT_S
-    moored = [{"at": START + i * SLOT_S + 7, "lat": 40.0, "lon": -1.79, "dtf": 1} for i in range(13)]
-    holder = P(moored)
-    other = P(straight(START, 20.0, 12))
-    # Give the moored boat a real personal best set earlier, before she stopped, larger than the other boat's.
-    holder["best"] = [(999.0, START + 7)] * len(holder["best"])
-    rows = {1: editions.boat_day(other, START, T, COURSE_NM), 2: editions.boat_day(holder, START, T, COURSE_NM)}
-    assert rows[2]["best24_nm"] == 999.0 and rows[2]["stopped"]                    # her own record is untouched
-    d = editions.fleet_day(rows, T, START, None)
-    assert d["best_sofar_team_id"] == 1                                           # but she does not hold the fleet's headline while stopped
+def test_a_stopped_boat_keeps_the_record_she_sailed_and_still_leaves_the_day_s_figures():
+    """The owner's rule, 19 Sep 2026, after the audit found the one row in three races where it broke (2022 race day 192): the
+    race's best run SO FAR is a record of what has happened, so a run set while sailing stands for ever, whether or not the boat
+    is moving today; the mean, the count and the DAY's best run measure sailing at this report and still leave her out. A boat
+    that runs 150 nm and then lies becalmed for twelve legs: the fleet's headline on the later day is the same figure, the same
+    boat and the same time as on the day she set it."""
+    still = [{"at": START + (12 + i) * SLOT_S + 7, "lat": 46.5 - 12 * 25.0 / 60.0, "lon": -1.79, "dtf": 1} for i in range(1, 13)]
+    holder, sailor = P(straight(START, 25.0, 12) + still), P(straight(START, 20.0, 24))
+    day2, day4 = START + 12 * SLOT_S, START + 24 * SLOT_S
+    r2 = {1: editions.boat_day(sailor, START, day2, COURSE_NM), 2: editions.boat_day(holder, START, day2, COURSE_NM)}
+    r4 = {1: editions.boat_day(sailor, START, day4, COURSE_NM), 2: editions.boat_day(holder, START, day4, COURSE_NM)}
+    set_it = editions.fleet_day(r2, day2, START, None)
+    assert not r2[2]["stopped"] and round(set_it["best_sofar_nm"]) == 150 and set_it["best_sofar_team_id"] == 2
+    assert r4[2]["stopped"] and r4[2]["best24_nm"] == r2[2]["best24_nm"]            # becalmed at this report, her own record untouched
+    d = editions.fleet_day(r4, day4, START, None)
+    assert (d["best_sofar_nm"], d["best_sofar_team_id"], d["best_sofar_at"]) == (set_it["best_sofar_nm"], 2, set_it["best_sofar_at"])
+    assert d["runs_n"] == 1 and d["best_run_team_id"] == 1 and d["mean_run_nm"] == r4[1]["run24_nm"]   # the day's own figures leave her out
+
+def test_the_best_run_so_far_never_falls_on_either_tracked_fleet():
+    """The invariant behind that rule, on real data rather than a synthetic fleet: best_sofar_nm is a running maximum over the
+    race and may never fall from one race day to the next. Both tracked sample fleets, every race day of the whole race. Race day
+    8 onward: inside NOR C.1.2's seven-day window a restart resets the boat's own record (running_best), and with it the fleet's
+    headline, which is a reset and not a fall. The 2022 fleet is the one that caught the fault — race day 192, the record holder
+    becalmed at the 00:00 report while her own row still read 218.3 nm."""
+    for race in ("ggr2018", "ggr2022"):
+        start, boats = editions_data.EDITIONS[race]["start"], prepared(race)
+        dz, best = editions.day_zero(start), None
+        for d in range(8, editions.race_day_of(max(max(b["ats"]) for b in boats.values()), start) + 1):
+            T = dz + d * 86400
+            rows = {tid: editions.boat_day(b, start, T, COURSE_NM_OF[race]) for tid, b in boats.items()}
+            nm = editions.fleet_day(rows, T, start, None)["best_sofar_nm"]
+            assert nm is not None and (best is None or nm >= best), (race, d, best, nm)
+            best = nm
 
 def test_a_not_fresh_boat_can_hold_the_fleet_s_best_run_so_far():
-    """Finding 4: boat_day's default row (no leg to test — here, a report she missed entirely) reads stopped=False, a documented
-    choice, not an oversight. fleet_day's best_sofar_* iterates every row, not only the fresh ones, so a boat gone silent keeps
-    holding the fleet's headline on her last confirmed record until she reports again — never hidden, only unconfirmed."""
+    """Finding 4: fleet_day's best_sofar_* iterates every row, not only the fresh ones, so a boat gone silent keeps holding the
+    fleet's headline on her last confirmed record until she reports again — never hidden, only unconfirmed. boat_day's default row
+    (no leg to test — here, a report she missed entirely) reads stopped=False, a documented choice, not an oversight."""
     T = START + 12 * SLOT_S
     other = P(straight(START, 20.0, 12))
     silent = P(straight(START, 20.0, 12, gap_at=(12,)))                    # missed the report at T: the default, not-fresh row

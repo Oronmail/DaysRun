@@ -100,13 +100,13 @@ def test_2018_imported_from_a_folder_and_the_three_hourly_week_makes_runs(conn, 
     assert len(rows(conn, "select id from team where race_key='ggr2018'")) == 17              # 17 starters; Francesco Cappelletti never crossed the line
     out = run.cmd_editions(conn, "ggr2018", as_of=None)
     assert out["notes"]["filled_slots"] > 0
-    # YB gave Mark Slats no distance to finish from 1 Jan 2019 to his finish. Those reports keep their position, so the page shows
+    # YB gave Mark Slats no distance to finish from 1 Jan 2019 to the finish. Those reports keep their position, so the page shows
     # where the boat was and what she ran; miles made good and place are blank on every one of them, and nothing is guessed.
-    assert out["notes"]["unmeasured_boat_days"] == {68: 29}                                   # race days 185 to 214, less the 28 Jan report he missed
+    assert out["notes"]["unmeasured_boat_days"] == {68: 29}                                   # race days 185 to 214, less the report missed on 28 Jan
     late = rows(conn, """select race_day, fresh, mg_nm is null, place is null, run24_nm is not null from edition_boat_day
                          where race_key='ggr2018' and team_id=68 and race_day between 184 and 214 order by race_day""")
     assert [d for d, _, _, _, _ in late] == list(range(184, 215))
-    assert [d for d, fresh, *_ in late if not fresh] == [211]                                 # 30 of the 31 reports; 28 Jan he missed his own
+    assert [d for d, fresh, *_ in late if not fresh] == [211]                                 # 30 of the 31 reports; the 28 Jan one was missed
     assert [d for d, _, blank_mg, _, _ in late if not blank_mg] == [184]                      # YB's last distance is 04:00 on 1 Jan, after that report
     assert all(no_place for d, _, _, no_place, _ in late if d > 184)                          # no place on a day nobody measured her distance
     assert [d for d, fresh, _, _, ran in late if fresh and not ran] == [186, 212]             # 28 of the 30 still carry a 24-hour run; two

@@ -15,8 +15,8 @@ year's does not: the 2018 fleet reported every three hours for a week, a rhythm 
 fix is KEPT for its position (grid.resample's keep_without_dtf) while every figure counted off a distance stays BLANK, never
 guessed — a measure of ours beside YB's own in the same fleet row disagreed with YB by up to 178 nm where it could be checked;
 and a boat that is not moving (perf.STOPPED_KN, perf.sailing — the same rule the live pages use) is left out of the fleet's
-figures for exactly as long as she lies there, never for the rest of the race; her own row keeps her own run, her own record and
-her place."""
+mean run, run count, day's best run and wind bands for exactly as long as she lies there, never for the rest of the race; her own
+row keeps her own run, her own record and her place, and the race's best run so far keeps the record she sailed."""
 import bisect, statistics
 from datetime import datetime, timezone
 from . import perf
@@ -183,9 +183,9 @@ def boat_day(boat, start_at, T, course_nm):
     here so that no page ever rounds a position itself. stopped: her own 4-hour leg ending at this report reads under
     perf.STOPPED_KN (perf.sailing) — a fact about this one report, used to leave her out of the FLEET's figures (fleet_day) while
     it holds; her own run24_nm and best24_nm on this row are never zeroed by it. The default row — no leg to test: before racing
-    starts, or a report she missed entirely — reads stopped=False, on purpose, not an oversight: fleet_day's best_sofar_* iterates
-    EVERY row, not only the fresh ones, so False never hides a genuine record; it only risks crediting the fleet's headline to a
-    boat whose current state is unknown, for as long as she stays silent."""
+    starts, or a report she missed entirely — reads stopped=False, on purpose, not an oversight: it is a fact about a leg, and
+    there is no leg to read. It costs the fleet's figures nothing either way, since a row with no leg carries no run to leave in
+    or out, and the fleet's best run so far reads every row's record whatever this flag says."""
     ended = boat["ended_at"] is not None and boat["ended_at"] <= T
     finished = ended and boat["ended_how"] == "finished"
     k, t0 = slot_of(T), t0_at(boat, T)
@@ -255,11 +255,14 @@ def wind_day(legs_by_team, winds):
 
 def fleet_day(rows, T, start_at, wind):
     """The fleet's row for the report at T. Leader, middle and last over the boats with a fix at the report plus the boats already
-    home at the course's length; the runs and the day's and race's best run over the boats that were MOVING at this report
-    (row['stopped'], perf.STOPPED_KN via boat_day): a boat lying in port is racing by the record, but a leg she did not sail is
-    not sailing, and is left out of the fleet's figures for exactly the reports where she lies there — never for the rest of the
-    race, and never from her own row. straight_pct leaves out a restarted boat: her miles sailed count from the restart and her
-    miles made good from the gun, and the ratio of the two means nothing.
+    home at the course's length; the runs and the DAY's best run over the boats that were MOVING at this report (row['stopped'],
+    perf.STOPPED_KN via boat_day): a boat lying in port is racing by the record, but a leg she did not sail is not sailing, and is
+    left out of the fleet's figures for exactly the reports where she lies there — never for the rest of the race, and never from
+    her own row. The race's best run SO FAR is not one of those figures: it is a record of what has happened, so a run set while
+    sailing stands whether or not the boat is moving today (the owner's rule, 19 Sep 2026, after the audit found best_sofar_nm
+    falling on 2022 race day 192 because the holder lay becalmed at that report); a "run" set while NOT moving is a tracker
+    wandering at a mooring, which never exceeds a real one and so cannot become the record either. straight_pct leaves out a
+    restarted boat: her miles sailed count from the restart and her miles made good from the gun, and the ratio means nothing.
 
     A boat whose report YB gave no distance to finish is counted as RACING and as FRESH — she is in the race and she reported —
     and her run is a real run, read off two positions, so she stays in the runs and can hold the day's best. She is out of the
@@ -273,7 +276,7 @@ def fleet_day(rows, T, start_at, wind):
     lead = min(inset, key=lambda tr: _order(tr[1]), default=None)
     sailing = [(t, r) for t, r in fresh if r["run24_nm"] is not None and not r["stopped"]]
     best = max(sailing, key=lambda tr: tr[1]["run24_nm"], default=None)
-    sofar = max(((t, r) for t, r in rows.items() if r["best24_nm"] is not None and not r.get("stopped")),
+    sofar = max(((t, r) for t, r in rows.items() if r["best24_nm"] is not None),        # a record stands whether or not she moves today
                 key=lambda tr: tr[1]["best24_nm"], default=None)
     straight = [r["sailed_nm"] / r["mg_nm"] * 100.0 for _, r in fresh if not r["restarted"] and r["mg_nm"] and r["mg_nm"] > 300 and r["sailed_nm"]]
     out = {"race_day": race_day_of(T, start_at), "as_of": T, "racing": len(racing), "finished": len(finished), "fresh": len(fresh),
@@ -346,9 +349,9 @@ def compute(fixes_by_team, ends, start_at, course_nm, days, winds, fill, milesto
 
     notes says what the rules of a past fleet added and left out, for the run's log: filled_slots, the slots fill_slots supplied;
     stopped_legs, the boat-days whose report's own 4-hour leg read under perf.STOPPED_KN (not moving) and so left the fleet's
-    mean, best-of-day, best-so-far and wind bands for that report; interp_reports, the boat-days whose own report was a filled
-    slot and are therefore not fresh; unmeasured_boat_days {team_id: n}, the boat-days that show a position but no distance to
-    finish because YB's record gives none, which is what the page's "Read with care" names."""
+    mean, best-of-day and wind bands for that report (never the best so far: a record stands); interp_reports, the boat-days whose
+    own report was a filled slot and are therefore not fresh; unmeasured_boat_days {team_id: n}, the boat-days that show a
+    position but no distance to finish because YB's record gives none, which is what the page's "Read with care" names."""
     from . import editions_data
     milestones = editions_data.MILESTONES if milestones is None else milestones
     boats = {tid: prepare(fx, start_at, ends.get(tid, {}).get("ended_at"), ends.get(tid, {}).get("ended_how"), fill)
