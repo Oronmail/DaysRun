@@ -4,7 +4,7 @@
 // needs no deploy. A month's file is about 1 MB at most, far below the 4.5 MB a response may be; if one ever nears it, Sentry hears first.
 import * as Sentry from "@sentry/nextjs";
 import { exportReports, latestFleet, raceSetup } from "@/lib/db";
-import { monthBounds, monthFile, monthLabel, monthsOfRace, parseFile } from "@/lib/export";
+import { monthBounds, monthCanExist, monthFile, monthLabel, monthsOfRace, parseFile } from "@/lib/export";
 import { SITE_HOST } from "@/lib/format";
 import { XLSX_TYPE, buildWorkbook } from "@/lib/xlsx";
 export const dynamic = "force-static";
@@ -20,8 +20,10 @@ export async function generateStaticParams() {
 export async function GET(_req: Request, { params }: { params: Promise<{ file: string }> }) {
   const { file } = await params;
   const month = parseFile(file);
+  // An invented name is refused BEFORE the database is asked anything: only the few months that can exist ever cost a read.
+  if (!month || !monthCanExist(month, Date.now())) return new Response("Not found", { status: 404 });
   const [fleet, setup] = await Promise.all([latestFleet(), raceSetup()]);
-  if (!month || !monthsOfRace(setup.start_at, fleet.as_of).includes(month)) return new Response("Not found", { status: 404 });
+  if (!monthsOfRace(setup.start_at, fleet.as_of).includes(month)) return new Response("Not found", { status: 404 });
 
   const { after, upTo } = monthBounds(month);
   const reports = await exportReports(after, upTo);
