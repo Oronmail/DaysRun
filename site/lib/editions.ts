@@ -44,8 +44,17 @@ export function raceDayOf(iso: string | null | undefined, year: Year): number | 
  *  dateline's tail because the tail makes the head row too wide for the note beside it at 1,440 px.) */
 export const figuresLine = (raceDay: number, asOf: string) => `figures of race day ${raceDay}, the ${hhmm(asOf)} UTC report of ${dayMon(asOf)}`;
 
-/** The span of race days a panel's figures are of, for the headings that carry it. */
-export const spanWords = (raceDay: number) => raceDay <= 1 ? `day ${raceDay}` : `days 1 to ${raceDay}`;
+/** The near view every chart of this page's first panel draws: the race days this year's fleet is still inside. The page draws
+ *  no figure of its own — the span, its axis ticks and the words under the charts all come from here. */
+export const NEAR_DAYS = 30;
+/** The span of race days a panel's figures are of, for the headings that carry it. A chart of 24-hour runs starts at day 2: a
+ *  run needs the day before it. */
+export const spanWords = (raceDay: number, from = 1) => raceDay <= from ? `day ${raceDay}` : `days ${from} to ${raceDay}`;
+/** An axis's ticks: nought to max in `count` even steps, so a chart's ticks follow its own span instead of being typed beside it. */
+export const axisTicks = (max: number, count: number) => Array.from({ length: count + 1 }, (_, i) => Math.round(max / count * i));
+/** The window the whole-race lines are smoothed over, and the words for it. */
+export const SMOOTH_POINTS = 7;
+export const smoothWords = () => `mean of ${NUM[SMOOTH_POINTS]} points`;
 
 /** The x axis of a whole-race chart: the last day any line reaches, rounded up to the next step. The lines stop where their own
  *  data stops (rule 13 stops them at the first boat home), so a fixed axis would leave bare space a reader reads as missing days. */
@@ -86,7 +95,7 @@ export function cautionWords(x: { raceDay: number; starters2018: number; thin: {
     `All three races had a gate at Lanzarote, but YB’s record of 2018 holds no timing there, so 2018’s Lanzarote milestone is blank rather than guessed. ${startWords()}`,
     `2018 has ${x.starters2018} starters here, not the ${NUM[RULE.entered2018] ?? RULE.entered2018} boats that entered: Francesco Cappelletti never crossed the start line.${rhythm}`,
     "YB’s record carries no distance to finish for the last month of Mark Slats’s 2018 race, so the miles made good and the place are blank on those days, although the positions and the 24-hour runs are real; the 2018 leader and middle of the fleet are then of the boats that have a distance.",
-    `The middle of the fleet is of the boats still racing that day, so it climbs as boats retire: late in a race it describes the survivors. A boat that is not moving — a ${RULE.legHours}-hour leg slower than ${RULE.stoppedKn} kt — is left out of the fleet’s mean and best run for as long as it lies there.`,
+    `The middle of the fleet is of the boats still racing that day, so it climbs as boats retire: late in a race it describes the survivors. A boat that is not moving — a ${RULE.legHours}-hour leg slower than ${RULE.stoppedKn} kt — is left out of the fleet’s mean run and the day’s best run for as long as it lies there; a record already set stands.`,
     `The wind is model wind, never measured on board: Open-Meteo’s archive of the ECMWF model for 2018 and 2022, and the model wind this site stores for this year. ${x.raceDay} days of weather are shared by a whole fleet, so read a knot between years as nothing.`,
   ];
 }
@@ -159,8 +168,12 @@ export function latDM(lat: number): string {
 export type RoadRow = { boats: number; midLat: number | null; spanNm: number | null };
 /** Where a fleet lay on one race day, of the boats that reported: how many, the middle boat's latitude, and how far the fleet
  *  is stretched from its northernmost boat to its southernmost, in nautical miles of latitude. */
+/** The boats "the road taken" is about, for the chart and for the table beside it alike: a boat that reported at the day's
+ *  report AND is still in its own race. A tracker sending from a quay after a retirement is neither on the road nor in the
+ *  count (it would drag the middle latitude and the span with it), and a boat that missed the report has no position today. */
+export const onTheRoad = (b: EditionBoatDay) => b.fresh && b.lat != null && b.lon != null && (b.racing || b.finished);
 export function roadRow(rows: EditionBoatDay[]): RoadRow {
-  const lats = rows.filter(r => r.fresh && r.lat != null).map(r => r.lat!).sort((a, b) => a - b);
+  const lats = rows.filter(onTheRoad).map(r => r.lat!).sort((a, b) => a - b);
   if (!lats.length) return { boats: 0, midLat: null, spanNm: null };
   const mid = lats.length % 2 ? lats[(lats.length - 1) / 2] : (lats[lats.length / 2 - 1] + lats[lats.length / 2]) / 2;
   return { boats: lats.length, midLat: mid, spanNm: Math.round((lats[lats.length - 1] - lats[0]) * 60) };
@@ -183,8 +196,9 @@ export function roadWords(raceDay: number, r2026: RoadRow, r2022?: RoadRow | nul
 
 /** One boat's miles made good by race day, from the gun, to maxDay: a day the record has no distance for is skipped, never
  *  bridged with a guess (YB left Mark Slats without one for the last month of 2018). */
-export function boatSeries(rows: EditionBoatDay[], maxDay: number): [number, number][] {
-  return [[0, 0], ...rows.filter(r => r.race_day <= maxDay && r.mg_nm != null).sort((a, b) => a.race_day - b.race_day).map(r => [r.race_day, r.mg_nm!] as [number, number])];
+export function boatSeries(rows: EditionBoatDay[], maxDay: number, lastDay = Infinity): [number, number][] {
+  const to = Math.min(maxDay, lastDay);                      // the same cap the fleet's series takes: a card may not draw a day the tiles do not show
+  return [[0, 0], ...rows.filter(r => r.race_day <= to && r.mg_nm != null).sort((a, b) => a.race_day - b.race_day).map(r => [r.race_day, r.mg_nm!] as [number, number])];
 }
 
 /** How far the three courses run over the same water: from Les Sables-d'Olonne to about the equator all three fleets sail the
@@ -227,7 +241,8 @@ export function milestoneCells(ms: EditionMilestone[], year: Year, name: string,
 /** A line smoothed over seven points, drawn from the seventh: over a whole race a day's mean run is spiky enough to hide the
  *  shape. Points, not days — a day the fleet had no run at all is not in the series to begin with. */
 export function sevenDayMean(pts: [number, number][]): [number, number][] {
-  return pts.flatMap((p, i) => i < 6 ? [] : [[p[0], pts.slice(i - 6, i + 1).reduce((n, q) => n + q[1], 0) / 7] as [number, number]]);
+  const w = SMOOTH_POINTS;
+  return pts.flatMap((p, i) => i < w - 1 ? [] : [[p[0], pts.slice(i - w + 1, i + 1).reduce((n, q) => n + q[1], 0) / w] as [number, number]]);
 }
 
 export const latestDay = (days: EditionDay[]) => {

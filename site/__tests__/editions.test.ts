@@ -3,8 +3,9 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { YEARS, YEAR_LABEL, latestDay, sameDay, series, toPass, pointTip, windShares, takeaways, raceDayLabel, milestonesAsOf, bestSoFar, COURSE_NM, shareOfCourse, fleetWind, fraction, windWords, latDM, roadRow, roadWords, boatSeries, attemptCard, milestoneCells, sevenDayMean, START_AT, startWords, RULE, raceDayOf, figuresLine, axisMax, SHARED_WATER_NM, spanWords, thinnestRunDay, methodWords, cautionWords, runsNote, RETURNING, VETERAN_HULLS, MILESTONE_ORDER } from "../lib/editions";
+import { YEARS, YEAR_LABEL, latestDay, sameDay, series, toPass, pointTip, windShares, takeaways, raceDayLabel, milestonesAsOf, bestSoFar, COURSE_NM, shareOfCourse, fleetWind, fraction, windWords, latDM, roadRow, roadWords, boatSeries, attemptCard, milestoneCells, sevenDayMean, START_AT, startWords, RULE, raceDayOf, figuresLine, axisMax, axisTicks, SHARED_WATER_NM, spanWords, NEAR_DAYS, SMOOTH_POINTS, smoothWords, onTheRoad, thinnestRunDay, methodWords, cautionWords, runsNote, RETURNING, VETERAN_HULLS, MILESTONE_ORDER } from "../lib/editions";
 import type { EditionDay, EditionBoatDay, EditionMilestone } from "../lib/db";
+import { DEFINITIONS } from "../lib/text";
 
 const day = (race_key: string, race_day: number, o: Partial<EditionDay> = {}): EditionDay => ({
   race_key, race_day, as_of: "2026-09-18T00:00:00+00:00", racing: 16, finished: 0, fresh: 16,
@@ -524,5 +525,59 @@ describe("the words the audit reworded", () => {
     const m = methodWords();
     expect(m[0]).not.toContain("not mile for mile");
     expect(m[0]).toContain("Early in a race the three fleets sail the same water, so their miles can be set side by side; once the courses part, after the equator, the share of each race’s own course is the fairer reading.");
+  });
+});
+
+// ——— Fix round 2: the last typed figures leave the page, and two sets that must be one ———
+
+describe("the near view's own span", () => {
+  it("is a tested constant, and the words under every chart of it are built from that constant", () => {
+    expect(NEAR_DAYS).toBe(30);
+    expect(spanWords(NEAR_DAYS)).toBe("days 1 to 30");
+    expect(spanWords(NEAR_DAYS, 2)).toBe("days 2 to 30");        // the runs chart: a 24-hour run needs the day before it
+    expect(axisTicks(NEAR_DAYS, 6)).toEqual([0, 5, 10, 15, 20, 25, 30]);
+    expect(axisTicks(240, 3)).toEqual([0, 80, 160, 240]);
+  });
+  it("says the smoothing window in words, from the window itself", () => {
+    expect(SMOOTH_POINTS).toBe(7);
+    expect(smoothWords()).toBe("mean of seven points");
+  });
+});
+
+describe("one boat's line stops where the page's figures stop", () => {
+  it("takes the same lastDay cap as the fleet's series, so a card cannot draw a day the tiles do not show", () => {
+    const rows = [bd("ggr2026", 11, { mg_nm: 1358 }), bd("ggr2026", 12, { mg_nm: 1519 }), bd("ggr2026", 13, { mg_nm: 1600 })];
+    expect(boatSeries(rows, 30).map(p => p[0])).toEqual([0, 11, 12, 13]);
+    expect(boatSeries(rows, 30, 12).map(p => p[0])).toEqual([0, 11, 12]);
+  });
+});
+
+describe("the boats the road taken counts", () => {
+  it("is one set for the chart and the table beside it: reported, and still in its own race", () => {
+    const rows = [
+      bd("ggr2026", 12, { lat: 25.34 }),
+      bd("ggr2026", 12, { lat: 29.70 }),
+      bd("ggr2026", 12, { lat: 36.52 }),
+      bd("ggr2026", 12, { lat: 43.37, racing: false, finished: false }),   // fresh, but out of the race: a tracker still sending from a quay
+      bd("ggr2026", 12, { lat: 44.90, fresh: false }),                     // in the race, but no report today
+    ];
+    expect(rows.filter(onTheRoad).length).toBe(3);
+    expect(roadRow(rows)).toEqual({ boats: 3, midLat: 29.70, spanNm: 671 });
+  });
+});
+
+describe("the caution about a boat that is not moving", () => {
+  it("names the two figures she leaves — the worker now keeps her record in the best run so far", () => {
+    const w = cautionWords({ raceDay: 12, starters2018: 17, thin: null });
+    expect(w[4]).toContain("is left out of the fleet’s mean run and the day’s best run for as long as it lies there");
+    expect(w[4]).not.toContain("the fleet’s mean and best run");
+  });
+});
+
+describe("the glossary", () => {
+  const glossary = DEFINITIONS.map(([k, v]) => `${k} ${v}`).join(" ");
+  it("carries no day count that goes stale overnight, and no measure the page no longer uses", () => {
+    expect(glossary).not.toContain("mile for mile");
+    expect(glossary).not.toMatch(/\b(ten|eleven|twelve|thirteen|fourteen|fifteen|twenty) days\b/i);
   });
 });

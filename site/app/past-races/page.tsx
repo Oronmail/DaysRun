@@ -9,7 +9,7 @@ import PointsChart from "@/components/PointsChart";
 import WindShares from "@/components/WindShares";
 import { Legend } from "@/components/Charts";
 import { editionDays, editionBoatDays, editionBoatSeries, editionMilestones, teamsOf, type EditionDay, type EditionBoatDay, type PastTeam } from "@/lib/db";
-import { YEARS, YEAR_LABEL, YEAR_COLOR, YEAR_TEXT, START_AT, RETURNING, VETERAN_HULLS, MILESTONE_ORDER, latestDay, sameDay, series, axisMax, boatSeries, sevenDayMean, pointTip, fleetWind, windWords, takeaways, roadRow, roadWords, latDM, attemptCard, milestoneCells, milestonesAsOf, bestSoFar, shareOfCourse, raceDayLabel, figuresLine, spanWords, thinnestRunDay, methodWords, cautionWords, runsNote, type Year } from "@/lib/editions";
+import { YEARS, YEAR_LABEL, YEAR_COLOR, YEAR_TEXT, START_AT, RETURNING, VETERAN_HULLS, MILESTONE_ORDER, latestDay, sameDay, series, axisMax, axisTicks, boatSeries, sevenDayMean, pointTip, onTheRoad, fleetWind, windWords, takeaways, roadRow, roadWords, latDM, attemptCard, milestoneCells, milestonesAsOf, bestSoFar, shareOfCourse, raceDayLabel, figuresLine, spanWords, smoothWords, NEAR_DAYS, thinnestRunDay, methodWords, cautionWords, runsNote, type Year } from "@/lib/editions";
 import { nm, kn, dayMon, sgn } from "@/lib/format";
 import { pageMeta } from "@/lib/seo";
 export const revalidate = 900;
@@ -17,7 +17,7 @@ export const metadata = pageMeta("/past-races");
 
 const GRAPHITE = { fontSize: 13, color: "var(--graphite)" } as const;
 const PARA = { fontSize: 15, lineHeight: 1.55 } as const;
-const SPAN = 30;                      // the near view of every chart: the first thirty race days, where this year's fleet still is
+const XT = axisTicks(NEAR_DAYS, 6);   // the near view's ticks follow its own span (lib/editions.ts), never a second list typed here
 const W = 760, H = 300;               // the widest chart the site draws anywhere (the Performance page's), so a phone scales it no further down than the site already does
 
 export default async function Page() {
@@ -50,7 +50,7 @@ export default async function Page() {
   // The chart of the ocean: one point per boat that reported on day D and was still in its own race. The same set the table
   // beside it counts ("boats with a fix"); a berth at A Coruña is not where a fleet sailed, and one stretched the view by five
   // degrees of latitude past the boats that were racing.
-  const marks = YEARS.flatMap(y => B[y].filter(b => b.fresh && b.lat != null && b.lon != null && (b.racing || b.finished)).map(b => {
+  const marks = YEARS.flatMap(y => B[y].filter(onTheRoad).map(b => {
     const t = teamOf(y, b.team_id);
     return { lat: b.lat!, lon: b.lon!, year: y, tip: pointTip(b, t ?? { name: "Unknown", first_name: null, yacht: null, model: null }, by[y]?.fresh ?? B[y].length),
       href: y === "ggr2026" ? `/skipper/${b.team_id}` : undefined, label: `${t?.name ?? "Unknown"}, ${YEAR_LABEL[y]}` };
@@ -80,7 +80,7 @@ export default async function Page() {
     pts: smooth ? sevenDayMean(line(y, "mean_run_nm", maxDay)) : line(y, "mean_run_nm", maxDay), end: smooth && y !== "ggr2026" ? undefined : YEAR_LABEL[y] }));
   // The whole-race charts end where their own lines end (rule 13 stops the miles at the first boat home), rounded up to the
   // next thirty days: a fixed axis leaves bare space a reader takes for missing days.
-  const wholeMg = axisMax(mgLines(9999, false).map(l => l.pts), SPAN), wholeRun = axisMax(runLines(9999, true).map(l => l.pts), SPAN);
+  const wholeMg = axisMax(mgLines(9999, false).map(l => l.pts), NEAR_DAYS), wholeRun = axisMax(runLines(9999, true).map(l => l.pts), NEAR_DAYS);
   const caution = cautionWords({ raceDay: D, starters2018: starters("ggr2018"), thin: thinnestRunDay(days, "ggr2018", wholeRun) });
 
   return <Shell active="Past races" dateline={<Dateline asOf={today.as_of} raceDay={D} />} title="PAST RACES"
@@ -95,13 +95,13 @@ export default async function Page() {
     {/* Miles made good: the race so far (leads) and the whole race (side). */}
     <div className="stack" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 400px", gap: 40 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div className="rule-title"><div className="label">The race so far</div><div className="small" style={{ fontStyle: "italic" }}>nm made good, each fleet on its own course, days 1 to {SPAN}</div></div>
+        <div className="rule-title"><div className="label">The race so far</div><div className="small" style={{ fontStyle: "italic" }}>nm made good, each fleet on its own course, {spanWords(NEAR_DAYS)}</div></div>
         <Legend items={[...LEG, ["leader", "var(--graphite)"], ["middle of the fleet (dashed)", "var(--graphite)"]]} />
-        <div className="panel"><YearLines width={W} height={H + 40} R={60} xmax={SPAN} ymax={3600} yticks={[0, 900, 1800, 2700, 3600]} xticks={[0, 5, 10, 15, 20, 25, 30]} lines={mgLines(SPAN, true)} /></div>
+        <div className="panel"><YearLines width={W} height={H + 40} R={60} xmax={NEAR_DAYS} ymax={3600} yticks={[0, 900, 1800, 2700, 3600]} xticks={XT} lines={mgLines(NEAR_DAYS, true)} /></div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, justifyContent: "space-between" }}>
         <div className="rule-title"><div className="label">The whole race</div><div className="small" style={{ fontStyle: "italic" }}>from the start to the first boat home</div></div>
-        <div className="panel"><YearLines width={380} height={250} R={34} xmax={wholeMg} ymax={27000} yticks={[0, 9000, 18000, 27000]} xticks={[0, wholeMg / 3, wholeMg * 2 / 3, wholeMg]} lines={mgLines(wholeMg, false)} /></div>
+        <div className="panel"><YearLines width={380} height={250} R={34} xmax={wholeMg} ymax={27000} yticks={[0, 9000, 18000, 27000]} xticks={axisTicks(wholeMg, 3)} lines={mgLines(wholeMg, false)} /></div>
         <div style={PARA}>{words.lead}{words.middle ? ` ${words.middle}` : ""}</div>
       </div>
     </div>
@@ -111,8 +111,8 @@ export default async function Page() {
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <div className="rule-title"><div className="label">The wind they had</div><div className="small" style={{ fontStyle: "italic" }}>mean model wind at the boats, by race day</div></div>
         <Legend items={LEG} />
-        <div className="panel"><YearLines width={W} height={H} R={60} xmax={SPAN} ymax={24} yticks={[0, 6, 12, 18, 24]} xticks={[0, 5, 10, 15, 20, 25, 30]} ylab={v => `${v} kt`}
-          lines={YEARS.map(y => ({ color: YEAR_COLOR[y], gold: y === "ggr2026", width: y === "ggr2026" ? 2.8 : 2, pts: line(y, "wind_kt", SPAN), end: YEAR_LABEL[y] }))} /></div>
+        <div className="panel"><YearLines width={W} height={H} R={60} xmax={NEAR_DAYS} ymax={24} yticks={[0, 6, 12, 18, 24]} xticks={XT} ylab={v => `${v} kt`}
+          lines={YEARS.map(y => ({ color: YEAR_COLOR[y], gold: y === "ggr2026", width: y === "ggr2026" ? 2.8 : 2, pts: line(y, "wind_kt", NEAR_DAYS), end: YEAR_LABEL[y] }))} /></div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div className="rule-title"><div className="label">And where it came from</div><div className="small" style={{ fontStyle: "italic" }}>share of legs, {spanWords(D)}</div></div>
@@ -147,7 +147,7 @@ export default async function Page() {
 
     {/* Second attempts: a card per returning skipper. */}
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div className="rule-title"><div className="label">Second attempts</div><div className="small" style={{ fontStyle: "italic" }}>each skipper against that skipper’s own earlier race, days 1 to {SPAN} · ✕ where the earlier race ended</div></div>
+      <div className="rule-title"><div className="label">Second attempts</div><div className="small" style={{ fontStyle: "italic" }}>each skipper against that skipper’s own earlier race, {spanWords(NEAR_DAYS)} · ✕ where the earlier race ended</div></div>
       <div className="cards">{attempts.map(a => {
         // The headline is against the most recent earlier race that has a figure on this race day, and says which race it is.
         const head = a.races.find(x => x.rows.find(b => b.race_day === D)?.mg_nm != null) ?? a.races[0];
@@ -159,10 +159,10 @@ export default async function Page() {
             {card?.diff != null && head && <span className={`num ${card.diff >= 0 ? "gain" : "loss"}`} style={{ fontSize: 15 }}>{sgn(card.diff, 0)} nm on {YEAR_LABEL[head.race_key]}</span>}
           </div>
           <div style={{ ...GRAPHITE, fontSize: 12 }}>{a.races.map(x => `day ${D} of ${YEAR_LABEL[x.race_key]}: ${nm(x.rows.find(b => b.race_day === D)?.mg_nm)}`).join(" · ")} · this year: {nm(nowMg)}</div>
-          <YearLines width={320} height={210} R={44} xmax={SPAN} ymax={3600} yticks={[0, 1200, 2400, 3600]} xticks={[0, 10, 20, 30]} lines={[
-            { color: YEAR_COLOR.ggr2026, gold: true, width: 2.8, pts: boatSeries(a.now, SPAN), end: "2026" },
+          <YearLines width={320} height={210} R={44} xmax={NEAR_DAYS} ymax={3600} yticks={[0, 1200, 2400, 3600]} xticks={axisTicks(NEAR_DAYS, 3)} lines={[
+            { color: YEAR_COLOR.ggr2026, gold: true, width: 2.8, pts: boatSeries(a.now, NEAR_DAYS, D), end: "2026" },
             ...a.races.map(x => { const c = attemptCard(a.now, x.rows, teamOf(x.race_key, x.team_id) ?? { ended_how: null, ended_where: null }, D, x.race_key);
-              return { color: YEAR_COLOR[x.race_key], width: 2, pts: boatSeries(x.rows, SPAN), ended: c.endDay != null && c.endDay <= SPAN ? `day ${c.endDay}` : undefined }; })]} />
+              return { color: YEAR_COLOR[x.race_key], width: 2, pts: boatSeries(x.rows, NEAR_DAYS), ended: c.endDay != null && c.endDay <= NEAR_DAYS ? `day ${c.endDay}` : undefined }; })]} />
           {a.races.map(x => { const t = teamOf(x.race_key, x.team_id); const c = attemptCard(a.now, x.rows, t ?? { ended_how: null, ended_where: null }, D, x.race_key);
             return <div key={x.race_key} style={{ fontSize: 13, lineHeight: 1.5 }}><span className="mont" style={{ fontWeight: 700, color: YEAR_TEXT[x.race_key] }}>{YEAR_LABEL[x.race_key]}</span> · {c.endText}.{c.pass ? ` ${c.pass}.` : ""}</div>; })}
         </div>;
@@ -203,19 +203,19 @@ export default async function Page() {
               <td key={`${y}m`} className="num r">{c.middle ? `day ${c.middle.race_day}` : c.passed ? <span style={GRAPHITE}>{c.middleText}</span> : "—"}</td>,
               <td key={`${y}p`} className="num r">{c.passed ? `${c.passed} of ${starters(y)}` : "—"}</td>];
           })}</tr>)}</tbody></table></div>
-      <div className="small">Lanzarote and Hobart are each race’s own timing through its gate, from YB’s record: 2018 has none at Lanzarote, although the race had the gate. The equator, the Cape of Good Hope and Cape Horn are crossings of a line on the chart, and mean the same thing in every fleet. “Half the fleet past” is the day the boat that makes half the starters through passed the mark — the eighth boat of sixteen starters, the ninth of seventeen — so two fleets of different size are measured alike; it is blank until half of them are past, and it is not the “middle of the fleet” of the tiles and the charts, which is the median of the boats still racing that day.</div>
+      <div className="small">Lanzarote and Hobart are each race’s own timing through its gate, from YB’s record: 2018 has none at Lanzarote, although the race had the gate. The equator, the Cape of Good Hope and Cape Horn are crossings of a line on the chart, and mean the same thing in every fleet. “Half the fleet past” is the day the boat that makes half the starters through passed the mark, so two fleets of different size are measured alike; it is blank until half of them are past, and it is not the “middle of the fleet” of the tiles and the charts, which is the median of the boats still racing that day.</div>
     </div>
 
     {/* 24-hour runs: the day (leads) and the whole race smoothed (side). */}
     <div className="stack" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 400px", gap: 40 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div className="rule-title"><div className="label">The fleet’s average 24-hour run</div><div className="small" style={{ fontStyle: "italic" }}>nm sailed, days 2 to {SPAN}</div></div>
+        <div className="rule-title"><div className="label">The fleet’s average 24-hour run</div><div className="small" style={{ fontStyle: "italic" }}>nm sailed, {spanWords(NEAR_DAYS, 2)}</div></div>
         <Legend items={LEG} />
-        <div className="panel"><YearLines width={W} height={H} R={60} xmax={SPAN} ymax={180} yticks={[0, 60, 120, 180]} xticks={[0, 5, 10, 15, 20, 25, 30]} lines={runLines(SPAN, false)} /></div>
+        <div className="panel"><YearLines width={W} height={H} R={60} xmax={NEAR_DAYS} ymax={180} yticks={[0, 60, 120, 180]} xticks={XT} lines={runLines(NEAR_DAYS, false)} /></div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, justifyContent: "space-between" }}>
-        <div className="rule-title"><div className="label">Over the whole race</div><div className="small" style={{ fontStyle: "italic" }}>mean of seven points</div></div>
-        <div className="panel"><YearLines width={380} height={250} R={34} xmax={wholeRun} ymax={180} yticks={[0, 60, 120, 180]} xticks={[0, wholeRun / 3, wholeRun * 2 / 3, wholeRun]} lines={runLines(wholeRun, true)} /></div>
+        <div className="rule-title"><div className="label">Over the whole race</div><div className="small" style={{ fontStyle: "italic" }}>{smoothWords()}</div></div>
+        <div className="panel"><YearLines width={380} height={250} R={34} xmax={wholeRun} ymax={180} yticks={[0, 60, 120, 180]} xticks={axisTicks(wholeRun, 3)} lines={runLines(wholeRun, true)} /></div>
         <div style={PARA}>{runsNote()}</div>
       </div>
     </div>
