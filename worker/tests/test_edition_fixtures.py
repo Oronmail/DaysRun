@@ -2,7 +2,7 @@
 # real, complete tracks fetched from YB's own public endpoints (see fixtures/make_edition_samples.py).
 import gzip, json, pathlib
 from datetime import datetime, timezone
-from ggrstats import db, editions_data
+from ggrstats import config, db, editions_data
 
 FIX = pathlib.Path(__file__).parent / "fixtures"
 KEEP = {"ggr2018": {8, 7, 68, 94}, "ggr2022": {11, 7, 4, 14, 1}}
@@ -38,7 +38,7 @@ def test_sample_gz_has_a_fixed_mtime_and_no_file_name_in_its_header():
 
 def test_fixture_race_start_matches_the_curated_start():
     for race in KEEP:
-        assert db.race_start(_setup(race)) == editions_data.EDITIONS[race]["start"], race
+        assert config.race_start(_setup(race)) == editions_data.EDITIONS[race]["start"], race
 
 def test_fixture_course_kept_whole_and_teams_trimmed_to_the_sample():
     for race, ids in KEEP.items():
