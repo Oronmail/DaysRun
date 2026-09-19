@@ -147,28 +147,27 @@ describe("the duplicated lists stay identical to the worker's own", () => {
   const returningBlock = py.match(/RETURNING = \[([\s\S]*?)\n\]/)?.[1];
   if (veteranBlock == null || returningBlock == null) throw new Error("could not find VETERAN_HULLS or RETURNING in the Python source — the drift guard cannot run blind");
 
-  it("holds VETERAN_HULLS — count, boat, design, source, and every past race's boat name and note — to the Python source", () => {
+  it("holds VETERAN_HULLS to the Python source, entry by entry — one glued string per hull so a field can only match within its own entry", () => {
+    // "design": "Rustler 36" is shared verbatim by Miss Beagle, Solarem and Lazy Otter, and the ertan-beskardes "source" URL is
+    // shared verbatim by Miss Beagle and Lazy Otter — checking yacht_2026/team_2026/design/source as four INDEPENDENT
+    // substrings (as an earlier round of this test did) would let one hull's design or source drift to a wrong value while a
+    // sibling hull's identical, still-correct value keeps the check green. So every field of a hull, its races included, is
+    // glued into ONE exact string in the order the Python line writes them, and THAT is what must occur in the source.
     const count = (veteranBlock.match(/"yacht_2026"/g) ?? []).length;
     expect(VETERAN_HULLS.length).toBe(count);   // the count itself is Python-derived, not a second hardcoded number
     for (const h of VETERAN_HULLS) {
-      expect(veteranBlock).toContain(`"yacht_2026": "${h.yacht_2026}"`);
-      expect(veteranBlock).toContain(`"team_2026": ${h.team_2026}`);
-      expect(veteranBlock).toContain(`"design": "${h.design}"`);
-      expect(veteranBlock).toContain(`"source": "${h.source}"`);
-      for (const r of h.races) {
-        // one exact substring per past race — race_key, team_id, yacht_then and note together, in the Python's own order —
-        // so a field moved to the wrong race inside a multi-race entry (e.g. Olleanna, Lazy Otter) cannot pass by accident.
-        expect(veteranBlock).toContain(`{"race_key": "${r.race_key}", "team_id": ${r.team_id}, "yacht_then": "${r.yacht_then}", "note": "${r.note}"}`);
-      }
+      const races = h.races.map(r => `{"race_key": "${r.race_key}", "team_id": ${r.team_id}, "yacht_then": "${r.yacht_then}", "note": "${r.note}"}`).join(", ");
+      expect(veteranBlock).toContain(`{"yacht_2026": "${h.yacht_2026}", "team_2026": ${h.team_2026}, "design": "${h.design}", "races": [${races}], "source": "${h.source}"}`);
     }
   });
-  it("holds RETURNING — count, the returning skipper's first name, and every past (race_key, team_id) — to the Python source", () => {
+  it("holds RETURNING to the Python source, entry by entry — team_2026, first and every past race glued into one string per skipper", () => {
+    // team_2026 and first happen to be unique across today's four rows, so checking them as independent substrings would pass
+    // by luck, not by a guard; gluing them to their own entry's races closes that regardless of future uniqueness.
     const count = (returningBlock.match(/"team_2026"/g) ?? []).length;
     expect(RETURNING.length).toBe(count);
     for (const r of RETURNING) {
-      expect(returningBlock).toContain(`"team_2026": ${r.team_2026}`);
-      expect(returningBlock).toContain(`"first": "${r.first}"`);
-      for (const race of r.races) expect(returningBlock).toContain(`{"race_key": "${race.race_key}", "team_id": ${race.team_id}}`);
+      const races = r.races.map(race => `{"race_key": "${race.race_key}", "team_id": ${race.team_id}}`).join(", ");
+      expect(returningBlock).toContain(`{"team_2026": ${r.team_2026}, "first": "${r.first}", "races": [${races}]}`);
     }
   });
   it("holds MILESTONE_ORDER to the six names in the Python source's order", () => {
