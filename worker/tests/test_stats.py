@@ -212,3 +212,20 @@ def test_a_report_takes_the_fix_nearest_the_hour_not_the_latest_one_after_it():
     assert take([f(T - 5 * 3600)]) == -5 * 3600                              # a silent boat still has her last position: she must not vanish
     assert stats.fix_at([], T) is None
     assert stats.fix_at([f(T + 1201)], T) is None                            # nothing at or before, and nothing near: nothing to say
+
+
+def test_a_fix_with_no_distance_to_finish_is_never_the_one_a_report_uses():
+    """19 Sep 2026, the first re-derive under the nearest-fix rule stopped at 07 Sep 04:00: Andrea's tracker had logged a fix at
+    04:00:00 exactly with a distance to finish of ZERO — one of the in-port noise fixes of the start days, which grid.resample has
+    always thrown away. The old rule took the latest fix (04:20) and never met it; the new one took the nearest and placed her at
+    the finish, and the sanity gate refused the snapshot. A report now passes over such a fix, as the grid does. A replay may have
+    no distance at all (Moitessier's 1968 positions carry none), so for the replays the filter is off."""
+    from ggrstats import stats
+    T = 1789516800
+    f = lambda at, dtf: {"at": at, "dtf": dtf, "lat": 0.0, "lon": 0.0}
+    andrea = [f(T - 300, 47650103), f(T, 0), f(T + 600, 47647459), f(T + 1200, 47645733)]          # 03:55, 04:00 (noise), 04:10, 04:20
+    assert stats.fix_at(andrea, T)["at"] == T - 300                                                # the nearest fix that has a distance
+    assert stats.fix_at([f(T, None), f(T - 4 * 3600, 5.0e7)], T)["at"] == T - 4 * 3600             # none near: her last real position
+    moitessier = [f(T - 60, 0), f(T - 90000, 0)]
+    assert stats.fix_at(moitessier, T) is None                                                     # a racing boat is never placed at nought
+    assert stats.fix_at(moitessier, T, need_dtf=False)["at"] == T - 60                             # a replay keeps her position

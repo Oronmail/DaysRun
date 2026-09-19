@@ -10,14 +10,21 @@ DAY = 86400
 def sorted_fixes(moments):
     return sorted(moments, key=lambda m: m["at"])
 
-def fix_at(fixes, t, tol_s=1200):
+def fix_at(fixes, t, tol_s=1200, need_dtf=True):
     """The fix that belongs to the report at t: the one NEAREST t within tol_s, and failing that the latest one before t.
 
     The same rule as grid.resample, which the legs and runs have always used; before 19 Sep 2026 this took the LATEST fix up to
     tol_s AFTER t instead, so a boat reporting every ten minutes near a landfall was placed by her 00:20 fix while her neighbours
     were placed by their 00:00 ones. A dead heat goes to the earlier fix, the report being at or before. The fallback is what keeps
     a silent boat in the fleet: she is placed at her last known position and marked stale, rather than vanishing from the snapshot
-    (which the sanity gate would refuse). `fixes` is sorted ascending."""
+    (which the sanity gate would refuse). `fixes` is sorted ascending.
+
+    A fix with no distance to finish is passed over, as grid.resample passes over it: the start days' tracks hold dozens of such
+    in-port noise fixes, and on 19 Sep 2026 the first re-derive under this rule placed Andrea at the finish on one of them (07 Sep
+    04:00:00, distance nought) until the sanity gate refused the report. need_dtf=False is for the replays, some of whose
+    positions carry no distance at all (Moitessier's 1968 ones)."""
+    if need_dtf:
+        fixes = [f for f in fixes if f.get("dtf")]
     near = [f for f in fixes if abs(f["at"] - t) <= tol_s]
     if near:
         return min(near, key=lambda f: (abs(f["at"] - t), f["at"]))
@@ -201,10 +208,10 @@ def compute_snapshot(setup, fixes_by_team, T, conditions=None):
     ghosts = {}
     for gid in config.GHOSTS:
         fx = fixes_by_team.get(gid, [])
-        f = fix_at(fx, T)
+        f = fix_at(fx, T, need_dtf=False)
         if not f:
             continue
-        old = fix_at(fx, f["at"] - 7 * DAY) or fx[0]
+        old = fix_at(fx, f["at"] - 7 * DAY, need_dtf=False) or fx[0]
         pace = ((old["dtf"] - f["dtf"]) / 1852.0) / ((f["at"] - old["at"]) / DAY) if f["at"] > old["at"] else None
         ghosts[gid] = {"dtf_nm": f["dtf"] / 1852.0 if f.get("dtf") else None, "fix_at": f["at"], "lat": f["lat"], "lon": f["lon"],
                        "pace7_nm_day": pace, "nfix": len(fx)}
