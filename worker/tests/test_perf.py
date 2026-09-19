@@ -53,7 +53,7 @@ def test_fleet_angles_on_the_golden_snapshot():
     by = {b["id"]: b for b in snap["boats"]}
     assert by[6]["gain24_nm"] is None and by[6]["lever_nm"] is None                   # the leader gains nothing on the leader
     assert by[16]["gain24_nm"] is None and by[16]["vs_near_nm"] is None               # Andrea missed the report: no false loss
-    fx = fleet(); d = lambda tid, t: stats.at_or_before(fx[tid], t)["dtf"] / 1852.0
+    fx = fleet(); d = lambda tid, t: stats.fix_at(fx[tid], t)["dtf"] / 1852.0
     want = (d(10, T - 86400) - d(6, T - 86400)) - (d(10, T) - d(6, T))                # Pat on Damien, fix to fix
     assert abs(by[10]["gain24_nm"] - want) < 0.01
     assert by[12]["vs_near_nm"] > 5                                                   # Henry sailed the fleet's longest run that day

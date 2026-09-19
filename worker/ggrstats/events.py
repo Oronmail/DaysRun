@@ -39,7 +39,10 @@ def derive(snapshot, previous, conditions):
         # course amended by the race (NOR C.1.4), must never read as a mark un-rounded or a later one rounded.
         was_mark = prev.get(b["id"], {}).get("next_mark")
         if was_mark and -1 < course.order(was_mark) < course.order(b["next_mark"]):
-            add("next_mark", b["id"], f"{b['first']} {_passed(was_mark)}", page="Course & sprints")
+            # Keyed by the boat and the MARK, never by the date: a mark is rounded once. Re-derived under a changed rule the same
+            # rounding can land on a report of another day, and a date key would let it be said a second time (18 Sep 2026: two
+            # Lanzarote roundings re-said and deleted by hand).
+            add("next_mark", b["id"], f"{b['first']} {_passed(was_mark)}", page="Course & sprints", key=f"next_mark:{b['id']}:{was_mark}")
     # A place gained or lost against a boat with an older fix is not a move (audit N6). The snapshot's rank_change already says
     # so at its source (stats.place_changes): places gained among the boats with a current fix now AND 24 hours ago, None otherwise.
     fresh = [b for b in boats if b.get("rank_change") is not None and not b.get("stale")]

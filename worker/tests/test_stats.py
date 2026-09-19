@@ -190,3 +190,25 @@ def test_a_boat_that_is_not_moving_is_no_part_of_her_neighbours_median():
     far = [boat(1, 150, 6.0), boat(2, 140, 5.5, lat=40.0), boat(3, 130, 5.0, lat=41.0)]
     stats.against_the_nearby(far)
     assert far[0]["vs_near_nm"] is None and far[0]["near_n"] == 0                      # nobody within 150 nm: nothing to say
+
+
+def test_a_report_takes_the_fix_nearest_the_hour_not_the_latest_one_after_it():
+    """The grid (grid.resample) has always taken the fix NEAREST each report hour, but a boat's own place, distance to finish and
+    position came from a rule that took the LATEST fix up to twenty minutes AFTER the hour. With four-hourly reports the two pick
+    the same fix; with a fast tracker they do not. YB stamps a report 1 to 179 seconds after the hour, and a boat set to report
+    every ten or fifteen minutes near a landfall (Andrea at Lanzarote, Guy moored there on 18 Sep) then had her 00:20 fix used
+    against her neighbours' 00:00 ones — about two miles of head start, enough to invent a pass. One rule now: nearest wins."""
+    from ggrstats import stats
+    T = 1789516800                                                           # a report hour
+    f = lambda at: {"at": at, "dtf": 1000.0, "lat": 0.0, "lon": 0.0}
+    take = lambda fixes: stats.fix_at(fixes, T)["at"] - T
+
+    assert take([f(T + 179)]) == 179                                         # the ordinary case: YB stamps the report seconds late
+    assert take([f(T + 3)]) == 3
+    assert take([f(T - 60 * 60), f(T + 3), f(T + 20 * 60)]) == 3             # a ten-minute tracker: the fix ON the hour, not the latest
+    assert take([f(T - 600), f(T + 900)]) == -600                            # nearest, whichever side of the hour it falls
+    assert take([f(T - 600), f(T + 600)]) == -600                            # a dead heat goes to the earlier: the report is at or before
+    assert take([f(T - 4 * 3600), f(T + 1201)]) == -4 * 3600                 # past the tolerance: the fix after the hour is not this report's
+    assert take([f(T - 5 * 3600)]) == -5 * 3600                              # a silent boat still has her last position: she must not vanish
+    assert stats.fix_at([], T) is None
+    assert stats.fix_at([f(T + 1201)], T) is None                            # nothing at or before, and nothing near: nothing to say
