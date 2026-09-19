@@ -27,6 +27,10 @@ export function parseFile(name: string): string | null {
   const m = name.startsWith(`${FILE_PREFIX}-`) && name.endsWith(".xlsx") ? name.slice(FILE_PREFIX.length + 1, -".xlsx".length) : "";
   return MONTH.test(m) ? m : null;
 }
+// Whether a month's file can exist at all, WITHOUT asking the database: from the month of the start to the month being sailed.
+// The file route asks this first, so an invented name costs nothing; before it did, every new name cost two reads (found 19 Sep 2026).
+export const FIRST_MONTH = "2026-09";
+export const monthCanExist = (month: string, nowMs: number): boolean => month >= FIRST_MONTH && month <= monthOf(new Date(nowMs).toISOString());
 // What the worker's ping renews: the month being sailed, and the month of 24 hours ago. The last one matters on the 1st: the
 // 00:00 report closes the month before, and its model weather may arrive an hour or two later.
 export function filesToRenew(nowMs: number): string[] {

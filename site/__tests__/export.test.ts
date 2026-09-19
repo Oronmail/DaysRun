@@ -1,6 +1,6 @@
 // site/__tests__/export.test.ts — the data files: which month a report belongs to, which months exist, what the worker's ping renews.
 import { describe, it, expect } from "vitest";
-import { filesToRenew, monthBounds, monthFile, monthLabel, monthOf, monthsOfRace, parseFile, raceDayOf } from "../lib/export";
+import { filesToRenew, monthBounds, monthCanExist, monthFile, monthLabel, monthOf, monthsOfRace, parseFile, raceDayOf } from "../lib/export";
 const START = "2026-09-06T12:30:00+00:00";
 describe("the months of the data files", () => {
   it("puts a report in the month its hours were sailed in: 00:00 on the 1st closes the month before", () => {
@@ -32,6 +32,14 @@ describe("the months of the data files", () => {
     expect(filesToRenew(Date.parse("2026-09-17T20:05:00Z"))).toEqual(["daysrun-ggr2026-2026-09.xlsx"]);
     expect(filesToRenew(Date.parse("2026-10-01T00:05:00Z"))).toEqual(["daysrun-ggr2026-2026-09.xlsx", "daysrun-ggr2026-2026-10.xlsx"]);
     expect(filesToRenew(Date.parse("2026-10-02T00:05:00Z"))).toEqual(["daysrun-ggr2026-2026-10.xlsx"]);
+  });
+  it("knows without asking the database which months can exist: from the month of the start to the month being sailed", () => {
+    // An invented file name must cost nothing: the route answers 404 before any read. Only a handful of names ever reach the database.
+    const now = Date.parse("2026-11-15T10:00:00Z");
+    for (const m of ["2026-09", "2026-10", "2026-11"]) expect(monthCanExist(m, now), m).toBe(true);
+    for (const m of ["2026-08", "2026-12", "2031-01", "1999-01"]) expect(monthCanExist(m, now), m).toBe(false);
+    expect(monthCanExist("2026-10", Date.parse("2026-09-30T23:00:00Z"))).toBe(false);
+    expect(monthCanExist("2026-10", Date.parse("2026-10-01T00:05:00Z"))).toBe(true);    // the calendar allows it; whether it has a report yet is the database's to say
   });
   it("numbers race days as GGR does: 6 September is day 0", () => {
     expect(raceDayOf("2026-09-06", START)).toBe(0); expect(raceDayOf("2026-09-16", START)).toBe(10); expect(raceDayOf("2027-01-01", START)).toBe(117);
