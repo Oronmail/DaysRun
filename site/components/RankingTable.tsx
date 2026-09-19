@@ -6,7 +6,7 @@ import type { BoatStat } from "@/lib/db";
 import { nm, kn, sgn } from "@/lib/format";
 import { sortBoats, defaultDir, type SortKey, type SortDir } from "@/lib/sort";
 import SpeedBars from "./SpeedBars";
-import { Tri, Who, Course } from "./Who";
+import { Run, Tri, Who, Course } from "./Who";
 type Sort = { key: SortKey; dir: SortDir };
 const signClass = (n: number | null) => (n == null || Math.round(n) === 0 ? "" : n > 0 ? "gain" : "loss");
 // Top level, not inside the table's render: a component defined during render is a new type every time, so React would
@@ -33,7 +33,7 @@ export default function RankingTable({ boats, window = "24h" }: { boats: RankRow
   const h = { sort, setSort };
   const leg = (b: BoatStat) => (b.spd4 == null || b.stale ? "—" : <>{kn(b.spd4)}<Course deg={b.cmg4 ?? 0} /></>);
   const legTitle = (b: BoatStat) => (b.spd4 == null || b.stale ? "No 4-hour leg to measure at this report" : `Average speed ${kn(b.spd4)} kt, course made good ${Math.round(b.cmg4 ?? 0)}°, on the newest 4-hour leg`);
-  const col = window === "4h" ? { h: "4\u00a0h leg kt", v: leg } : window === "7d" ? { h: "7\u00a0d run nm", v: (b: BoatStat) => nm(b.run7_nm) } : { h: "24\u00a0h run nm", v: (b: BoatStat) => nm(b.run24_nm) };   // a figure never parts from its unit at a line break
+  const col = window === "4h" ? { h: "4\u00a0h leg kt", v: leg } : window === "7d" ? { h: "7\u00a0d run nm", v: (b: BoatStat) => nm(b.run7_nm) } : { h: "24\u00a0h run nm", v: (b: BoatStat) => <Run b={b} /> };   // a figure never parts from its unit at a line break
   const rows = sortBoats(boats, sort.key, sort.dir, window);
   const rated = boats.map(b => b.wind_ratio).filter((r): r is number => r != null).sort((x, y) => x - y);
   const median = rated.length ? (rated.length % 2 ? rated[(rated.length - 1) / 2] : (rated[rated.length / 2 - 1] + rated[rated.length / 2]) / 2) : null;

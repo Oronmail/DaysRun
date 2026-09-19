@@ -1,6 +1,7 @@
 // site/app/skipper/[id]/page.tsx
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { ClassTag } from "@/components/Who";
 import Shell from "@/components/Shell";
 import Tiles from "@/components/Tiles";
 import SpeedLog from "@/components/SpeedLog";
@@ -31,11 +32,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const view = fleetView(boats, 506);
   const markers: Marker[] = boats.map(x => ({ lat: x.lat, lon: x.lon, kind: x.team_id === id ? "hi" : "dim", label: x.team_id === id ? x.team.first_name ?? undefined : undefined, name: x.team_id === id ? undefined : x.team.first_name ?? x.team.name, href: x.team_id === id ? undefined : `/skipper/${x.team_id}`, tip: boatTip(x) }));
   const lead = boats[0];
-  return <Shell active="Skippers" dateline={`SKIPPERS · ${b.team.country_code} · SAIL ${b.team.sail}`} title={b.team.name.toUpperCase()} sub={<><i>{b.team.yacht}</i> · {b.team.model} · {ord(b.rank)} of {fleet.racing} at race day {fleet.race_day}</>} note={`${sgn(b.vs_kirsten_days)} days on Neuschäfer’s 2022 pace`}>
+  return <Shell active="Skippers" dateline={`SKIPPERS · ${b.team.country_code} · SAIL ${b.team.sail}`} title={b.team.name.toUpperCase()} sub={<><i>{b.team.yacht}</i> · {b.team.model} · {ord(b.rank)} of {fleet.racing} at race day {fleet.race_day}<ClassTag team={b.team} /></>} note={`${sgn(b.vs_kirsten_days)} days on Neuschäfer’s 2022 pace`}>
     <Tiles items={[
       { k: "Place", v: ord(b.rank), s: `${b.rank_change == null ? "no change of place shown: tracker silent now or 24 h ago" : b.rank_change === 0 ? "no change in 24 h" : b.rank_change > 0 ? `up ${b.rank_change} in 24 h` : `down ${-b.rank_change} in 24 h`} · ${b.rank === 1 ? (boats[1] ? `${nm(boats[1].gap_nm)} nm ahead of ${boats[1].team.first_name}` : "leading") : `${nm(b.gap_nm)} nm behind ${lead.team.first_name}`}` },
       { k: "To go", v: `${nm(b.dtf_nm)} nm`, s: `${nm(b.made_good_nm)} nm made good since the start` },
-      { k: "24-hour run", v: `${nm(b.run24_nm)} nm`, s: `personal best ${nm(b.best24_nm)} nm, window ending ${dayMonTime(b.best24_at)}` },
+      { k: "24-hour run", v: `${b.run24_bridged && b.run24_nm != null ? "\u2265\u2009" : ""}${nm(b.run24_nm)} nm`, s: b.run24_bridged ? "at least: the tracker missed a report inside these 24 hours" : `personal best ${nm(b.best24_nm)} nm, window ending ${dayMonTime(b.best24_at)}` },
       { k: "Best 4-hour leg", v: `${kn(b.best4_kn)} kt`, s: `average speed, leg ending ${dayMonTime(b.best4_at)} UTC` }]} />
     <div className="stack" style={{ display: "grid", gridTemplateColumns: "520px minmax(0,1fr)", gap: 40 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}><div className="rule-title"><div className="label">Track since the start</div><div className="small" style={{ fontStyle: "italic" }}>fleet in grey · point at a boat for its skipper, place and latest leg</div></div>

@@ -174,11 +174,12 @@ def moored(b):
 def against_the_nearby(boats, radius_nm=150.0, min_boats=2):
     """Each boat's 24-hour run against the MEDIAN run of the boats within `radius_nm`, which sail much the same weather.
     A boat that is not moving is left out of that median: she sails no weather at all, and one motionless boat moves a small
-    median a long way (18 Sep 2026, Guy deBoer lying at Lanzarote among the boats rounding the mark). She keeps her own figure,
-    measured against the boats that are sailing — the miles she covered are a fact. Sets vs_near_nm and near_n on each boat."""
+    median a long way (18 Sep 2026, Guy deBoer lying at Lanzarote among the boats rounding the mark). So is a boat whose own run
+    crossed a silent tracker, that run being a lower bound rather than a measurement. Both keep their own figure, measured against
+    the boats that are sailing — the miles they covered are a fact. Sets vs_near_nm and near_n on each boat."""
     for b in boats:
         near = sorted(o["w24"]["dist_nm"] for o in boats if o is not b and o["w24"] and not o["stale"] and not moored(o)
-                      and gc_nm(b["lat"], b["lon"], o["lat"], o["lon"]) < radius_nm)
+                      and not o["w24"].get("bridged") and gc_nm(b["lat"], b["lon"], o["lat"], o["lon"]) < radius_nm)
         b["near_n"] = len(near)
         if not (b["w24"] and not b["stale"] and len(near) >= min_boats):
             b["vs_near_nm"] = None
