@@ -300,3 +300,49 @@ def test_an_error_that_is_not_the_archives_wall_is_not_swallowed(conn, tmp_path,
     monkeypatch.setattr(weather, "fetch_archive_wind", boom)
     with pytest.raises(ValueError):
         run.cmd_import_edition_wind(conn, "ggr2018", pace_s=0.0, until_day=2)
+
+# ---------------------------------------------------------------- the two alarms that guard the swept-bearing measure
+
+def test_the_live_fleet_entering_a_corners_wedge_is_warned_about(conn, caplog, monkeypatch):
+    """This year's figures are YB's own and the site is checked against them to 0.07 nm, so a live fix inside a corner's wedge
+    would be smoothed into a disagreement with the answer key — which is exactly why the general form of this rule was refused.
+    NOR C.1.3 holds the fleet out at Trindade by requiring the island to be left to port, but the NOR forces the side AT the
+    island, not on the approach: a boat 24.6 nm east of the line abeam node 85 is already inside. Today the master fixture clears
+    the wedge by 5.35 deg of bearing and NOTHING ELSE WOULD NOTICE if that changed, so run._wedge_watch counts it on every derive.
+    Here the fleet is moved bodily into the wedge to prove the alarm is wired, then left where it is to prove it stays quiet."""
+    import logging
+    from ggrstats import course, editions_data, run
+    seed_2026_fleet(conn)
+    nodes = json.load(open(FIX / "RaceSetup.20260916.json"))["course"]["nodes"]
+    line, apex = course.Line(nodes), nodes[88]
+    called = []
+    real = run._wedge_watch
+    monkeypatch.setattr(run, "_wedge_watch", lambda l, r, f: called.append(r) or real(l, r, f))
+    with caplog.at_level(logging.WARNING, logger="ggrstats"):
+        assert run.cmd_editions(conn, "ggr2026", as_of=T26)["days"]
+    assert called == ["ggr2026"]                                                   # the live derive really does count, every time
+    assert not [r for r in caplog.records if "wedge" in r.message], caplog.text     # and the real fleet is outside it
+    monkeypatch.undo()
+
+    inside = {1: [{"at": T26, "lat": apex["lat"] + 3.0, "lon": apex["lon"] + 6.0, "dtf": 21000 * 1852}]}
+    assert line.adjusts(inside[1][0]["lat"], inside[1][0]["lon"], 88)              # the position really is in the wedge
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="ggrstats"):
+        assert run._wedge_watch(line, "ggr2026", inside) == 1
+    assert "wedge" in caplog.text and "Trindade" in caplog.text
+
+def test_a_corner_that_has_dropped_out_of_the_course_warns_this_year_and_refuses_a_past_race(conn, caplog, monkeypatch, tmp_path):
+    """The line is built from race.raw_setup as the capture worker last stored it, and YB EDITS that structure mid-race — it added
+    a whole Chichester tag on 18 Sep 2026. course._corner returns None rather than raising when a node has moved, so that a course
+    change can never take the hourly capture down; without this alarm Van Den Heede's 1,173 nm leap would be back on a public page
+    with every test green and nothing in the log. The live path warns and carries on; the past-races rebuild refuses outright."""
+    import logging
+    from ggrstats import course, run
+    seed_2026_fleet(conn)
+    monkeypatch.setattr(course, "CORNERS", [dict(course.CORNERS[0], turn=-40.0)])   # as if YB had renumbered the nodes
+    with caplog.at_level(logging.WARNING, logger="ggrstats"):
+        assert run.cmd_editions(conn, "ggr2026", as_of=T26)["days"]                 # this year still derives
+    assert "Trindade" in caplog.text and "no longer holds" in caplog.text
+    run.cmd_import_edition(conn, "ggr2022", from_dir=folder(tmp_path, "ggr2022"))
+    with pytest.raises(RuntimeError, match="no longer holds Trindade"):
+        run.cmd_editions(conn, "ggr2022", as_of=None)                               # the past-races page must not publish that

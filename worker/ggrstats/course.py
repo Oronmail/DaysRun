@@ -28,12 +28,15 @@ MARGIN_COMPUTED_NM = 12.0    # a mark whose distance is the course sum: YB cuts 
 # leaves the island to port, which puts a boat on the course WEST of it, the convex side, where the wedge does not reach. Measured:
 # 0 fixes of 2022 and 0 of 2026 move by one bit. A corner joins this table only when its bevel is under 10 nm, each arm a single great
 # circle for 500 nm, its turn over 40 deg, no fleet checked against YB sails inside it, and no other row's wedge meets it.
-CORNERS = [{"name": "Trindade", "apex": 88, "last": 89, "H": 40.0, "legs": 200, "turn": -82.287, "tol": 0.05}]
-# apex: the node the bearing is swept about. last: the last turning node, 4.56 nm on, that completes the turn. H: the half-wedge in
-# degrees — measured, H <= 44 leaves 2022 bit-identical and H >= 35 puts the residual at the fleets' own background, so 40 is the round
-# number in the middle. legs: how far in leg index a fix may be from the apex, so that a boat coming home up the Atlantic (legs 428-442)
-# is never caught by a wedge she passes through in bearing alone. turn/tol: what the course must really do at those nodes for the row
-# to apply at all. Everything else — the two arms' bearings, the corner's own span of the course, C — is derived from the nodes.
+CORNERS = [{"name": "Trindade", "apex": 88, "last": 89, "H": 40.0, "legs": 200, "turn": -82.287, "tol": 0.05, "bevel": 10.0, "straight": 0.05}]
+# apex: the node the bearing is swept about, and the last node of the inbound arm. last: the first node of the OUTBOUND arm, 4.56 nm on,
+# where the turn is complete. H: the half-wedge in degrees — measured, H <= 44 leaves 2022 bit-identical and H >= 35 puts the residual at
+# the fleets' own background, so 40 is the round number in the middle. legs: how far in leg index a fix may be from the apex, so that a
+# boat coming home up the Atlantic (legs 428-442) is never caught by a wedge she passes through in bearing alone. The last four are the
+# admission criteria of the measurement, asserted on the course before the row is allowed to apply at all: turn/tol, how sharply those
+# nodes must really turn; bevel, the longest along-course gap between the two arms a point corner may have (10 nm); straight, how far the
+# bearing to a node further along an arm may drift from the bearing to the first (0.05 deg), which is what "each arm is a single great
+# circle" means. Everything else — the arms' bearings, the apex's own foot on each arm, C — is derived from the nodes at load time.
 
 def _gc(lat1, lon1, lat2, lon2):
     p1, l1, p2, l2 = map(math.radians, (lat1, lon1, lat2, lon2))
@@ -102,38 +105,47 @@ def order(name):
 def _corner(nodes, cum, row):
     """One row of CORNERS as the geometry the swept-bearing measure needs, derived from the course nodes at load time so that a
     course whose corner sits at another node index needs only that index changed. None when this course does not hold that corner —
-    too short for the nodes, or its node no longer turns what the row declares — and then nothing is smoothed and the measure is
-    today's, which is the safe direction to fail in; test_trindade.test_constants_come_from_the_course is the alarm that rings."""
+    too short for the nodes, the nodes out of order, or the course failing any admission criterion the row asserts — and then
+    nothing is smoothed and the measure is today's, which is the safe direction to fail in on the live capture path. It is only
+    the safe direction if somebody is told: run._measure warns on every derive when a row has dropped out, and refuses outright on
+    the past-races rebuild, and test_trindade.test_constants_come_from_the_course pins the geometry against the fixture."""
     a, b = row["apex"], row["last"]
-    if a < 1 or b + 1 >= len(nodes):
+    if a < 3 or b <= a or b + 3 >= len(nodes):                       # the arms need three nodes each to be checked for straightness
         return None
     brg = lambda i, j: bearing_deg(nodes[i]["lat"], nodes[i]["lon"], nodes[j]["lat"], nodes[j]["lon"])
+    straight = lambda i, step: all(abs(_wrap(brg(i, i + step * k) - brg(i, i + step))) <= row["straight"] for k in (2, 3))
     if abs(_wrap(brg(b, b + 1) - brg(a - 1, a)) - row["turn"]) > row["tol"]:
-        return None
-    alpha, beta = brg(a, a - 1), brg(a, b + 1)                       # back up the inbound arm, and on down the outbound one
+        return None                                                  # these nodes do not turn what the row says they turn
+    if cum[b] - cum[a] > row["bevel"] or not (straight(a, -1) and straight(b, 1)):
+        return None                                                  # a hairpin spread over miles, or an arm that is not one great circle
+    alpha, beta = brg(a, a - 1), brg(b, b + 1)                       # back up the inbound arm, and on down the outbound one from ITS OWN first node
+    gamma, bevel = brg(a, b), _gc(nodes[a]["lat"], nodes[a]["lon"], nodes[b]["lat"], nodes[b]["lon"])
+    sweep = (beta - alpha) % 360.0                                   # the concave sector, swept clockwise from one arm to the other
     return {"name": row["name"], "apex": a, "legs": row["legs"], "lat": nodes[a]["lat"], "lon": nodes[a]["lon"],
-            "alpha": alpha, "beta": beta, "s_apex": cum[a], "s_next": cum[b], "span": 2.0 * row["H"],
-            "psi0": (alpha + beta) / 2.0 - row["H"],                 # the wedge runs from the bisector less H to the bisector plus H
-            "c": math.cos(math.radians((beta - alpha) / 2.0 - row["H"]))}   # what cos(psi - ALPHA) is at the wedge's near edge
+            "alpha": alpha, "beta": beta, "gamma": gamma, "bevel": bevel, "span": 2.0 * row["H"],
+            "s_in": cum[a],                                          # the apex's own foot on the inbound arm: the apex itself
+            "s_out": cum[b] - bevel * math.cos(math.radians(_wrap(gamma - beta))),   # and its foot on the outbound arm, which starts at node b
+            "psi0": alpha + sweep / 2.0 - row["H"],                  # the wedge runs from the bisector less H to the bisector plus H
+            "c": math.cos(math.radians(sweep / 2.0 - row["H"]))}     # cos(PSI0 - ALPHA), and equally cos(BETA - PSI1): the two edges are one angle
 
 def _swept(c, lat, lon, i, total):
     """The swept-bearing distance to finish at corner `c`, or None to leave the plain measure alone — outside the wedge, or too far
     from the corner in leg index. Inside it the boat is given the corner's own span of the course in proportion to the bearing she
-    has swept round it, from S_APEX - D*C at the near edge to S_NEXT + D*C at the far one. Those two are not fitted. The inbound
-    arm is a single great circle from node ~55 to the apex, so the plain along-course value on that side is S_APEX - D*cos(psi -
-    ALPHA); at the near edge psi - ALPHA is exactly (BETA - ALPHA)/2 - H, whose cosine is C. The near edge is therefore EXACT for
-    any D, with no seam and no constant to tune. The far edge is not quite: BETA is the bearing to node 90 but the outbound arm
-    begins at node 89, 4.563 nm off the apex, so the rule reads 3.8 - 0.0069*D nm further along there than the plain measure —
-    a seam of a few miles, bounded by the bevel, against the 1,150 nm the rule removes (test_trindade.py names and pins it).
-    Monotone for a boat rounding the corner either way, since D*C*(2x - 1) rises both while she closes the corner and while she
-    opens it, and her swept bearing rises throughout."""
+    has swept round it, from S_IN - D*C at the near edge to S_OUT + D*C at the far one. Those two are not fitted, and they are
+    symmetric. Each arm is a single great circle (_corner checks it), so the plain along-course value of a boat at (D, psi) is
+    S_IN - D*cos(psi - ALPHA) on the inbound side and S_OUT + D*cos(BETA - psi) on the outbound one, where S_IN and S_OUT are the
+    APEX's OWN FEET on the two arms — the apex lies on the inbound arm, and is one bevel short of the outbound one, which is what
+    S_OUT subtracts. At the near edge psi - ALPHA is exactly sweep/2 - H, and at the far edge BETA - psi is the same angle, whose
+    cosine is C. So the rule meets the plain measure at BOTH edges, for any D, with no seam and no constant to tune. It is monotone
+    for a boat rounding the corner either way, since D*C*(2x - 1) rises both while she closes the corner and while she opens it,
+    and her swept bearing rises throughout."""
     if abs(i - c["apex"]) > c["legs"]:
         return None
     x = (bearing_deg(c["lat"], c["lon"], lat, lon) - c["psi0"]) % 360.0
     if not 0.0 < x < c["span"]:
         return None
     d = _gc(c["lat"], c["lon"], lat, lon) * c["c"]
-    return total - (c["s_apex"] - d + x / c["span"] * (c["s_next"] - c["s_apex"] + 2.0 * d))
+    return total - (c["s_in"] - d + x / c["span"] * (c["s_out"] - c["s_in"] + 2.0 * d))
 
 class Line:
     """YB's course as a polyline with its cumulative length, for measuring any point's distance to finish on THIS course: the
@@ -146,6 +158,11 @@ class Line:
         self.cum = _cumulative(nodes)
         self.total_nm = self.cum[-1]
         self.corners = [c for c in (_corner(nodes, self.cum, r) for r in (CORNERS if corners is None else corners)) if c]
+    def adjusts(self, lat, lon, i):
+        """Would a corner move the plain measure for a fix at (lat, lon) whose forward search landed on leg `i`? The live fleet's
+        figures are YB's own and are checked against YB to 0.07 nm, so smoothing one would be a disagreement with the answer key
+        by construction: run.py counts this over this year's fleet on every derive and says so the moment it is not nought."""
+        return any(_swept(c, lat, lon, i, self.total_nm) is not None for c in self.corners)
     def togo(self, lat, lon, i0=0, back=3, ahead=40):
         i, t = _nearest(self.nodes, lat, lon, max(0, i0 - back), min(len(self.nodes) - 1, i0 + ahead))
         togo = self.total_nm - (self.cum[i] + t * (self.cum[i + 1] - self.cum[i]))

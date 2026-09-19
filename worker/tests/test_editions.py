@@ -83,16 +83,18 @@ def test_distance_to_finish_outruns_the_boat_only_at_a_bend_or_where_2018_cut_th
     THE TWO BIG ONES WERE REMOVED BY THE SWEPT-BEARING MEASURE ON 19 SEP 2026 (course.CORNERS, test_trindade.py). They were
     Jean-Luc Van Den Heede's 1,173.2 nm and Are Wiig's 984.7 nm, each a single four-hour leap across the corner's bisector where
     the nearest point of the polyline flips from one arm of the Trindade dog-leg to the other. Before the rule, 77 of 11,252 pairs
-    broke the invariant, the median excess 16.4 nm; after it, 217 do, the median excess 10.4 nm and the largest 80.1 nm.
+    broke the invariant, the median excess 16.4 nm; after it, 219 do, the median excess 10.3 nm and the largest 80.1 nm.
 
     THE COUNT ROSE AND THAT IS THE RULE WORKING, NOT FAILING. 2022 is untouched, the same 47 pairs as before — every boat of that
     fleet left Trindade to port as NOR C.1.3 requires, which puts her on the convex side of the corner, where the rule does not
-    reach. 2018's 30 became 170 because eight of those boats sailed 545 to 865 nm INSIDE this year's dog-leg: across it they now
-    make good about 200 nm a day against about 140 sailed, for a fortnight. That is not miles invented, it is what cutting a
-    corner means — the 2018 route down the eastern Atlantic really was shorter than this year's — and it is why straight_pct reads
-    under 100 % for those boats over those days. Each excess is small; the fleet's whole run of them is bounded below.
+    reach. Every one of the 142 new pairs belongs to Jean-Luc Van Den Heede (77), Are Wiig (64) and Mark Slats (1), and to nobody
+    else: they are the sample's boats that sailed INSIDE this year's dog-leg, 865, 795 and 45 nm east of it. Across that corner
+    they now make good about 200 nm a day against about 140 sailed, for a fortnight. The rule invents no miles — it REDISTRIBUTES
+    the plain measure's own total across the sweep, because both edges of the wedge are pinned to the plain measure and every
+    finisher still ends where she ended. It is what cutting a corner means: the 2018 route down the eastern Atlantic really was
+    shorter than this year's, and straight_pct reads under 100 % for those boats over those days.
 
-    WHAT IS LEFT, AND IS DELIBERATE. The largest fall over 100 nm is now Are Wiig's 189.2 nm across a 26.3-hour silence in which
+    WHAT IS LEFT, AND IS DELIBERATE. The largest fall over 100 nm is now Are Wiig's 168.5 nm across a 26.3-hour silence in which
     she sailed 118.8 — a long gap, not a step. The largest excess in the samples is Kirsten Neuschäfer's 80.1 nm at the Storm Bay
     gate, a 1-hour leg where the course doubles back on itself, identical under both measures. On the WHOLE 2018 fleet (which
     these samples do not carry) the largest remaining anomaly is 243.2 nm — Istvan Kopar, 18 Dec 2018, 52°15'S 111°42'W, the same
@@ -106,8 +108,9 @@ def test_distance_to_finish_outruns_the_boat_only_at_a_bend_or_where_2018_cut_th
                 if fell > ran + 5.0:
                     bad.append((race, tid, hhmm(q["at"]), round(fell, 1), round(ran, 1)))
     assert [b[:3] for b in bad if b[3] > 100] == [("ggr2018", 7, "2018-08-13 22:17")], bad     # a 26.3-hour silence, not a jump
-    assert len(bad) == 217, [b for b in bad if b[3] <= 100]
-    assert [sum(1 for b in bad if b[0] == race) for race in ("ggr2018", "ggr2022")] == [170, 47]   # 2022 unchanged, to the pair
+    assert len(bad) == 219, [b for b in bad if b[3] <= 100]
+    assert [sum(1 for b in bad if b[0] == race) for race in ("ggr2018", "ggr2022")] == [172, 47]   # 2022 unchanged, to the pair
+    assert sorted((tid, sum(1 for b in bad if b[:2] == ("ggr2018", tid))) for tid in (7, 8, 68, 94)) == [(7, 68), (8, 90), (68, 14), (94, 0)]
     assert round(max(b[3] - b[4] for b in bad), 1) == 80.1                                     # Storm Bay, and the same today
 
 # ---------------------------------------------------------------- one boat's day

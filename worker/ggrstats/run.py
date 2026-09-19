@@ -162,13 +162,46 @@ def _setup_2026(conn):
 def _measure(conn, race):
     """(line, the course's length in nm, each mark's distance to finish, put the fixes on the line?) for one fleet. A past fleet
     is measured on the 2026 line and so reads the LINE's own figure at each mark; this year's fleet keeps YB's own distances and
-    so YB's observed figure (editions.compute's docstring — mixing the two scales hid a rounding Guy deBoer had made)."""
+    so YB's observed figure (editions.compute's docstring — mixing the two scales hid a rounding Guy deBoer had made).
+
+    The line is built from `race.raw_setup` as the capture worker last stored it, and YB EDITS that structure mid-race — it added a
+    whole Chichester tag on 18 Sep 2026. A renumbered node would drop a row of course.CORNERS silently (course._corner returns None
+    rather than raising, so that a course change can never take the hourly capture down), and Jean-Luc Van Den Heede's 1,173 nm
+    leap across Trindade would be back on a public page with every test still green. So the row is checked here on EVERY derive:
+    a warning on the live path, which must keep running, and a refusal on the past-races rebuild, which must not publish that."""
     setup = _setup_2026(conn)
     nodes = setup["course"]["nodes"]
     line = course.Line(nodes)
+    missing = [r["name"] for r in course.CORNERS if r["name"] not in {c["name"] for c in line.corners}]
+    if missing:
+        msg = (f"the 2026 course line no longer holds {', '.join(missing)}: YB's RaceSetup has moved or renumbered the corner, so "
+               f"the swept-bearing measure is off and the past fleets' figures there are the nearest-point ones again")
+        if race != config.RACE_KEY:
+            raise RuntimeError(msg)                                          # a rebuild of the past-races page must not publish that
+        log.warning("%s", msg)
+        monitoring.warn("a course corner has dropped out of the measure", corners=",".join(missing))
     if race == config.RACE_KEY:
         return line, setup["course"]["distance"] / 1.852, course.mark_togo(nodes, config.MARKS), False
     return line, line.total_nm, course.mark_togo(nodes, config.MARKS, observed={}), True
+
+def _wedge_watch(line, race, fixes):
+    """How many fixes of THIS year's fleet lie inside a corner's wedge, warning the moment it is not nought. Those figures are YB's
+    own and the site is checked against them to 0.07 nm, so smoothing one would be a disagreement with the answer key by
+    construction — the reason the general form of this rule was refused. NOR C.1.3 holds the fleet out at Trindade by requiring the
+    island to be left to port, but the NOR forces the side AT the island, not on the approach: measured 19 Sep 2026, a boat 28 nm
+    east of the line at node 85, or 9.3 nm at node 87, is already inside, and this year's fleet clears the wedge by 6.6 deg of
+    bearing only because it is ten days out. Nothing else would notice, so this does."""
+    n = 0
+    for fx in fixes.values():
+        i0 = 0
+        for f in sorted(fx, key=lambda f: f["at"]):
+            _, i0 = line.togo(f["lat"], f["lon"], i0)
+            n += line.adjusts(f["lat"], f["lon"], i0)
+    if n:
+        log.warning("%s: %d fix(es) of this year's fleet lie inside a course corner's wedge (%s); the live figures are YB's own and "
+                    "must not be smoothed", race, n, ", ".join(c["name"] for c in line.corners))
+        monitoring.warn("this year's fleet has entered a course corner's wedge", fixes=n)
+    return n
 
 def cmd_import_edition(conn, race, from_dir=None):
     """A past race into the database, once: RaceSetup, the split times and every fix from YB's own endpoints, or from a folder
@@ -214,6 +247,7 @@ def cmd_editions(conn, race, as_of, since=None, fixes=None):
     fixes = fixes if fixes is not None else db.load_fixes(conn, race)
     ends = db.team_ends(conn, race)                                          # ghosts are not in it; a past race's rows are the curated ones
     if race == config.RACE_KEY:
+        _wedge_watch(line, race, fixes)                                      # the live fleet must never enter a corner's wedge
         winds, now = db.load_winds(conn, race), as_of if as_of else latest_slot()
         last = editions.race_day_of(now - 1, start)                          # the last 00:00 report before this slot
         if now % 86400 == 0 and conn.execute("select 1 from fleet_stat where race_key=%s and as_of=%s", (race, db.ts(now))).fetchone():

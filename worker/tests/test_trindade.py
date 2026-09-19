@@ -70,12 +70,24 @@ def test_constants_come_from_the_course():
     brg = lambda i, j: course.bearing_deg(NODES[i]["lat"], NODES[i]["lon"], NODES[j]["lat"], NODES[j]["lon"])
     assert abs(course._wrap(brg(88, 89) - brg(87, 88)) + 48.89) < 0.01          # node 88 turns 48.89 deg to port
     assert abs(course._wrap(brg(89, 90) - brg(87, 88)) + 82.29) < 0.01          # the corner's whole turn, over a 4.56 nm bevel
-    assert abs(course._gc(NODES[88]["lat"], NODES[88]["lon"], NODES[89]["lat"], NODES[89]["lon"]) - 4.563) < 0.01
-    assert abs(TRINDADE["alpha"] - 16.33904) < 1e-5 and abs(TRINDADE["beta"] - 116.54297) < 1e-5
-    assert abs(TRINDADE["s_apex"] - 4379.7087) < 1e-4 and abs(TRINDADE["s_next"] - 4384.2719) < 1e-4
-    assert abs(TRINDADE["c"] - 0.984497) < 1e-6
-    assert abs(PSI0 - 26.44100) < 1e-5 and abs(PSI1 - 106.44100) < 1e-5
+    assert abs(TRINDADE["bevel"] - 4.56316) < 1e-4 and abs(TRINDADE["gamma"] - 147.35610) < 1e-5
+    assert abs(TRINDADE["alpha"] - 16.33904) < 1e-5                             # back up the inbound arm, from the apex
+    assert abs(TRINDADE["beta"] - 113.96174) < 1e-5                             # on down the outbound arm, from ITS first node, 89
+    assert abs(TRINDADE["s_in"] - 4379.7087) < 1e-4                             # the apex's foot on the inbound arm: the apex itself
+    assert abs(TRINDADE["s_out"] - 4380.4621) < 1e-4                            # and on the outbound arm, one bevel back from node 89
+    assert abs(TRINDADE["c"] - 0.988198) < 1e-6
+    assert abs(PSI0 - 25.15039) < 1e-5 and abs(PSI1 - 105.15039) < 1e-5
     assert abs(LINE.total_nm - 25754.5239) < 1e-3 and LINE.total_nm == PLAIN.total_nm
+
+def test_the_two_edges_of_the_wedge_are_one_angle():
+    """The construction is symmetric, and this is what that means: the angle between the near edge and the arm it leaves, and the
+    angle between the far edge and the arm it meets, are the SAME angle — sweep/2 - H = 8.81135 deg — so one cosine, C, serves
+    both. Anything that broke the symmetry (measuring the outbound arm from the apex rather than from its own first node, as the
+    design's section 5 did) would show up here as two different numbers."""
+    import math
+    assert abs(math.cos(math.radians(PSI0 - TRINDADE["alpha"])) - TRINDADE["c"]) < 1e-12
+    assert abs(math.cos(math.radians(TRINDADE["beta"] - PSI1)) - TRINDADE["c"]) < 1e-12
+    assert abs((PSI0 - TRINDADE["alpha"]) - 8.81135) < 1e-5 and abs((TRINDADE["beta"] - PSI1) - 8.81135) < 1e-5
 
 def test_the_corner_table_holds_trindade_and_nothing_else():
     """One row, by design. The same mechanism at every corner of the course was measured and refused: it moves 59 of this
@@ -84,11 +96,21 @@ def test_the_corner_table_holds_trindade_and_nothing_else():
     assert [c["name"] for c in course.CORNERS] == ["Trindade"]
     assert len(LINE.corners) == 1 and LINE.corners[0]["name"] == "Trindade"
 
-def test_a_course_without_this_corner_is_not_smoothed():
-    """The row names node indices; the code checks the nodes really turn what the row says before smoothing them. A course too
-    short for node 89, or one whose node 88 no longer turns 82 deg, gets today's measure — the safe direction to fail in."""
-    assert course.Line([{"lat": 46.5, "lon": -1.79}, {"lat": 0.0, "lon": -1.79}]).corners == []
-    assert course.Line([{"lat": 46.5 - i * 0.5 / 60.0, "lon": -1.79} for i in range(201)]).corners == []   # 201 nodes, no corner
+def test_a_course_that_fails_any_admission_criterion_is_not_smoothed():
+    """The row names node indices; the code asserts on the course itself that those nodes really are the corner the row describes,
+    before it smooths anything. Every criterion is exercised here, because a row applied to the wrong water is far worse than a row
+    that does not apply at all. Failing quietly is the safe direction on the live capture path — run._measure is what says so out
+    loud, and refuses outright on the past-races rebuild (test_editions_cli.py)."""
+    row = dict(course.CORNERS[0])
+    bend = lambda **kw: course.Line(NODES, corners=[dict(row, **kw)]).corners
+    assert bend() and bend()[0]["name"] == "Trindade"                            # the real course, unmodified: the row applies
+    assert course.Line([{"lat": 46.5, "lon": -1.79}, {"lat": 0.0, "lon": -1.79}]).corners == []            # too short for the nodes
+    assert course.Line([{"lat": 46.5 - i * 0.5 / 60.0, "lon": -1.79} for i in range(201)]).corners == []   # 201 nodes, but no turn
+    assert bend(last=87) == [] and bend(last=88) == []                           # `last` must follow `apex`, or the interpolation inverts
+    assert bend(apex=87) == [] and bend(apex=89) == []                           # the wrong node does not turn what the row declares
+    assert bend(bevel=4.0) == []                                                 # the bevel is 4.563 nm: a tighter limit refuses it
+    assert bend(last=92) == []                                                   # a "corner" spread over 162 nm is a hairpin, not a point
+    assert bend(straight=0.0) == []                                              # an arm must be one great circle, to the row's tolerance
 
 # ---------------------------------------------------------------- the wedge: its edges, its inside, and everything outside it
 
@@ -97,43 +119,63 @@ def _edge_gap(psi, d):
     lat, lon = _dest(psi, d)
     return LINE.togo(lat, lon, 88, back=88, ahead=120)[0] - PLAIN.togo(lat, lon, 88, back=88, ahead=120)[0]
 
-def test_the_near_edge_is_exactly_the_plain_measure():
-    """The property the rule rests on, proved on the inbound arm. Nodes ~55 to 88 are a single great circle, so the plain
-    along-course value of a boat at (D, psi) on that side is S_APEX - D*cos(psi - ALPHA); at psi = PSI0, psi - ALPHA is exactly
-    (BETA - ALPHA)/2 - H = 10.10197 deg, whose cosine is C, so the plain value is exactly S_APEX - D*C, which is what the rule
-    returns there for x = 0. Nothing is fitted and no constant tunes the join. The residual below is the flat-earth frame the
-    existing _nearest already uses, and it is under a tenth of a mile out to 300 nm off the line."""
-    for d in (1, 2, 5, 20, 50, 100, 300):
-        assert abs(_edge_gap(PSI0 + 1e-6, d)) < 0.15, (d, _edge_gap(PSI0 + 1e-6, d))
-    for d in (600, 900):                                    # the 2018 fleet's own range: the furthest boat was 865 nm inside
-        assert abs(_edge_gap(PSI0 + 1e-6, d)) < 1.0, (d, _edge_gap(PSI0 + 1e-6, d))
+def test_both_edges_meet_the_plain_measure():
+    """The property the whole rule rests on, and it holds at BOTH edges because the construction is symmetric. Each arm is a
+    single great circle, so the plain along-course value of a boat at (D, psi) is S_IN - D*cos(psi - ALPHA) on the inbound side
+    and S_OUT + D*cos(BETA - psi) on the outbound one, where S_IN and S_OUT are the apex's own feet on the two arms; at each edge
+    that cosine is C, which is exactly what the rule returns for x = 0 and x = 1. Nothing is fitted and no constant tunes the
+    joins.
 
-def test_the_far_edge_carries_the_bevels_own_offset_and_nothing_more():
-    """The far edge is NOT exact, and this test pins by how much and says why — measured 19 Sep 2026, against the design's claim
-    of symmetry. BETA is the bearing from node 88 to node 90, but the outbound arm begins at node 89, 4.563 nm from node 88 on a
-    bearing of 147.36 deg: the apex is not ON that arm, and the chord 88->90 runs 2.581 deg off the arm's own bearing of 113.96.
-    So the plain value at PSI1 is not S_NEXT + D*C but S_NEXT + D*0.99144 - 3.8085 in the flat frame, and the rule reads
-    3.8 - 0.0069*D nm further along the course than the plain measure does. That is a step of about 3.8 nm at the corner, falling
-    to nought around 550 nm off and reaching -3.7 nm at 900; it is bounded by the 4.56 nm bevel and by nothing else. It is three
-    hundred times smaller than the fault the rule cures and smaller than the fleets' own background at other bends (56.7 to 80.1
-    nm), but it is a real seam and it is not what the design's section 5 claims. See the report."""
-    flat = lambda d: 3.8085 - 0.006943 * d                  # the offset the bevel forces, derived above, not fitted
-    for d in (5, 10, 20, 50, 100, 300):
-        assert abs(-_edge_gap(PSI1 - 1e-6, d) - flat(d)) < 0.1, (d, _edge_gap(PSI1 - 1e-6, d), flat(d))
-    assert all(abs(_edge_gap(PSI1 - 1e-6, d)) < 6.0 for d in (1, 2, 5, 20, 50, 100, 300, 600, 900))
+    THE BOUNDS ARE STATED BY RANGE FROM THE APEX, which is what the rule reads — not by offset from the line, which is a different
+    quantity. Real adjusted fixes reach D = 1,854 nm (full 2018 fleet, 19 Sep 2026), so the bounds go to 1,900. The residual is
+    the flat-earth frame the existing _nearest already uses, and it grows with D: measured, the near edge is 0.000 nm out to
+    D = 5, -0.03 at 100, -0.10 at 300, -0.74 at 900, -1.89 at 1,500 and -2.83 at 1,900. The far edge is within 1.3 nm out to
+    D = 900 (the 1.0 to 1.3 nm at D = 1 and 2 is the plain measure clamping to the 4.56 nm bevel leg, inside which no arm exists),
+    and is not asserted beyond 900 because the outbound arm itself is only one great circle for 992 nm — see the next test."""
+    for d in (1, 2, 5, 20, 50, 100, 300):
+        assert abs(_edge_gap(PSI0 + 1e-6, d)) < 0.11, (d, _edge_gap(PSI0 + 1e-6, d))
+    for d in (600, 900):
+        assert abs(_edge_gap(PSI0 + 1e-6, d)) < 0.8, (d, _edge_gap(PSI0 + 1e-6, d))
+    for d in (1200, 1500, 1800, 1900):
+        assert abs(_edge_gap(PSI0 + 1e-6, d)) < 3.0, (d, _edge_gap(PSI0 + 1e-6, d))
+    for d in (1, 2, 5, 20, 50, 100, 300, 600, 900):
+        assert abs(_edge_gap(PSI1 - 1e-6, d)) < 1.3, (d, _edge_gap(PSI1 - 1e-6, d))
+
+def test_the_arms_are_single_great_circles_and_the_rule_reaches_no_further():
+    """The construction's premise, pinned, because the rule extrapolates each arm as a straight line for as far as the wedge
+    reaches. Measured on the 2026 course: the INBOUND arm is one great circle from the apex back 2,646 nm (to node 38) and breaks
+    at node 37; the OUTBOUND arm is one great circle for 992 nm (to node 108) and breaks at node 109. Beyond 992 nm along the
+    outbound arm the rule's far edge is extrapolating past a bend and its reading parts company with the plain measure — measured,
+    -19 nm at D = 1,200 and -70 nm at D = 1,800.
+
+    THAT IS NOT REACHABLE BY A BOAT, and this is why it is documented rather than bounded. To sit at the far edge 1,200 nm out is
+    to be 1,200 nm ESE of Trindade, deep towards Africa, and still measured against this corner. Measured over all 790 adjusted
+    fixes of the 2018 fleet: every fix beyond D = 1,200 nm has swept at most 14.0 deg of the wedge's 80, and every fix beyond
+    D = 1,600 at most 8.7 — they are boats near the Equator, far SHORT of the corner up the long inbound arm, not out on the
+    short outbound one. If a future course shortens the inbound arm or a future fleet sails the other quadrant, this test is
+    where that shows up."""
+    brg = lambda i, j: course.bearing_deg(NODES[i]["lat"], NODES[i]["lon"], NODES[j]["lat"], NODES[j]["lon"])
+    drift = lambda i, j, k: abs(course._wrap(brg(i, j) - brg(i, k)))
+    assert all(drift(88, j, 87) < 1e-4 for j in range(38, 88)) and drift(88, 37, 87) > 0.05      # inbound: nodes 38 to 87, then a bend
+    assert all(drift(89, j, 90) < 1e-4 for j in range(91, 109)) and drift(89, 109, 90) > 0.05    # outbound: nodes 90 to 108, then a bend
+    cum = course._cumulative(NODES)
+    assert abs((cum[88] - cum[38]) - 2646) < 1 and abs((cum[108] - cum[89]) - 992) < 1
 
 def test_no_step_across_either_edge_of_the_wedge():
-    """A boat crossing an edge sees no step at the near one (under a tenth of a mile to 300 nm off, under a mile to 900) and the
-    bevel's own 3.8 nm at the far one. The two readings are taken a ten-thousandth of a degree either side of the edge, so what
-    is measured is the seam itself and not the boat's own progress."""
-    step = lambda edge, d: abs(LINE.togo(*_dest(edge - 1e-4, d), 88, back=88, ahead=120)[0]
-                               - LINE.togo(*_dest(edge + 1e-4, d), 88, back=88, ahead=120)[0])
+    """A boat crossing an edge sees no step worth the name: measured a ten-thousandth of a degree either side, so that what is
+    measured is the seam itself and not the boat's own progress. The bound is the same flat-earth residual as the test above, and
+    it is stated by range from the apex: a tenth of a mile to D = 300, under a mile to 900, under three miles to 1,900 at the near
+    edge; under 1.3 nm to 900 at the far edge. Before the symmetry was corrected on 19 Sep 2026 the far edge stepped by 4.8 nm."""
+    step = lambda edge, d: abs(LINE.togo(*_dest(edge - 1e-4, d), 88, back=88, ahead=200)[0]
+                               - LINE.togo(*_dest(edge + 1e-4, d), 88, back=88, ahead=200)[0])
     for d in (1, 5, 50, 300):
-        assert step(PSI0, d) < 0.15, (d, step(PSI0, d))
+        assert step(PSI0, d) < 0.11, (d, step(PSI0, d))
     for d in (600, 900):
-        assert step(PSI0, d) < 1.0, (d, step(PSI0, d))
+        assert step(PSI0, d) < 0.8, (d, step(PSI0, d))
+    for d in (1200, 1500, 1900):
+        assert step(PSI0, d) < 3.0, (d, step(PSI0, d))
     for d in (1, 5, 50, 300, 600, 900):
-        assert step(PSI1, d) < 6.0, (d, step(PSI1, d))
+        assert step(PSI1, d) < 1.3, (d, step(PSI1, d))
 
 def test_outside_the_wedge_is_bit_identical():
     """Outside the wedge the rule returns the plain value itself, not a value near it: the same float."""
@@ -202,9 +244,39 @@ def test_2026_fleet_is_bit_identical_under_the_rule():
 def test_2022_fleet_is_bit_identical_under_the_rule():
     """Not one 2022 fix lies in the wedge on the outbound passage, and the reason is structural, not luck: the NOR requires
     Trindade to be left to port, so a boat heading 196 deg passes WEST of it — the convex side, where the wedge does not reach.
-    Every boat of the whole 2022 fleet crossed 20 deg 30' S west of the corner, by 0.2 to 205 nm."""
+    Every boat of the whole 2022 fleet crossed 20 deg 30' S west of the corner, by 0.2 to 205 nm.
+
+    The comparison is on the RAW float Line.togo returns, never on the fix's own dtf: editions.on_line has already rounded that
+    to whole metres, so half a metre of drift would pass a test whose name promises the same float. On the whole 2022 fleet,
+    24,151 raw floats, not one differs (19 Sep 2026, rehearsal import)."""
+    n = 0
     for tid, b in prepared("ggr2022").items():
-        assert [f["dtf"] for f in b["rounded"]["fixes"]] == [f["dtf"] for f in b["plain"]["fixes"]], tid
+        i0 = j0 = 0
+        for f in b["plain"]["fixes"]:
+            a, i0 = LINE.togo(f["lat"], f["lon"], i0, ahead=200)
+            p, j0 = PLAIN.togo(f["lat"], f["lon"], j0, ahead=200)
+            assert a == p and i0 == j0, (tid, f["at"], a, p)
+            n += 1
+    assert n > 7000
+
+def test_the_live_fleet_is_held_out_of_the_wedge_by_bearing_alone():
+    """The thing nothing else would notice. This year's figures are YB's OWN distance to finish and the site is checked against
+    them to 0.07 nm, so smoothing one would be a disagreement with the answer key by construction — the reason the general form
+    of this rule was refused. What holds the fleet out is NOR C.1.3, which requires Trindade to be left to port and so puts a boat
+    sailing the course on the convex side. But the NOR forces the side AT THE ISLAND, not on the approach: measured 19 Sep 2026,
+    a boat 24.6 nm east of the line abeam node 85, or 8.2 nm abeam node 87, is already inside the wedge, and the closest any fix
+    of the master fixture comes is 5.35 deg of bearing — a margin it has only because the fleet is ten days out.
+
+    So the margin is pinned here, and run._wedge_watch counts it on every derive and warns the moment it is not nought
+    (test_editions_cli.py). If this test fails because the margin has shrunk, that is the fleet standing east of the line, and
+    the answer to it is a decision about the measure, not a wider tolerance."""
+    worst = 360.0
+    for t in json.load(gzip.open(FIX / "AllPositions3.master.20260916T0230.json.gz")):
+        if t["id"] in editions_data.EDITIONS["ggr2026"]["skip"]: continue
+        for m in t["moments"]:
+            x = (course.bearing_deg(APEX[0], APEX[1], m["lat"], m["lon"]) - PSI0) % 360.0
+            worst = min(worst, (x - TRINDADE["span"]) % 360.0, (0.0 - x) % 360.0)
+    assert 5.0 < worst < 5.5, worst                                              # measured 5.35 deg; the wedge is 80 deg wide
 
 def test_the_two_named_2018_jumps_are_gone():
     """Jean-Luc Van Den Heede's distance to finish fell 1,173.2 nm in the four hours to 2018-08-04 04:00 while sailing 23.0,
@@ -220,10 +292,11 @@ def test_the_two_named_2018_jumps_are_gone():
 
 def test_no_jump_is_left_in_the_trindade_box():
     """Inside the box the corner sits in (0 to 36 S, 40 W to 5 E) the 2018 fleet's largest one-leg anomaly falls from over a
-    thousand miles to the fleets' own background at other bends. On the sample: 1,150.2 nm (Van Den Heede's leap) becomes 70.4,
-    and that 70.4 is Are Wiig across a 26.3-hour silence in which she sailed 118.8 nm — over a leg of the grid's own four hours
-    the worst is 37.9. For the WHOLE 2018 fleet, measured 19 Sep 2026 on the rehearsal import, the figures are the same 70.4 for
-    a long gap and 56.7 otherwise (Mark Sinclair, 27 Aug 2018, a bend on the way to the Cape, which reads 56.7 today as well).
+    thousand miles to the fleets' own background at other bends. On the sample: 1,150.2 nm (Van Den Heede's leap) becomes 49.6,
+    and that 49.6 is Are Wiig across a 26.3-hour silence in which she sailed 118.8 nm — over a leg of the grid's own four hours
+    the worst is 37.9. For the WHOLE 2018 fleet, measured 19 Sep 2026 on the rehearsal import, the figure is 56.7 nm (Mark
+    Sinclair, 27 Aug 2018, a bend on the way to the Cape, which reads 56.7 nm under today's measure too) — and it is 56.7 whether
+    long gaps are counted or not, because correcting the far edge's symmetry took Are Wiig's long-gap leg down from 70.4 to 49.6.
     The tolerance is a tenth of a mile because these are pinned measurements, not a shape check."""
     box = lambda f: -36.0 <= f["lat"] <= 0.0 and -40.0 <= f["lon"] <= 5.0
     worst = {(m, long): max((p["dtf"] - q["dtf"]) / 1852.0 - gc_nm(p["lat"], p["lon"], q["lat"], q["lon"])
@@ -231,7 +304,7 @@ def test_no_jump_is_left_in_the_trindade_box():
                             if box(p) and box(q) and (long or q["at"] - p["at"] <= 4.7 * 3600))
              for m in ("plain", "rounded") for long in (True, False)}
     assert abs(worst[("plain", True)] - 1150.2) < 0.1 and abs(worst[("plain", False)] - 1150.2) < 0.1
-    assert abs(worst[("rounded", True)] - 70.4) < 0.1 and abs(worst[("rounded", False)] - 37.9) < 0.1, worst
+    assert abs(worst[("rounded", True)] - 49.6) < 0.1 and abs(worst[("rounded", False)] - 37.9) < 0.1, worst
 
 def test_only_the_outbound_atlantic_passage_is_adjusted():
     """Which fixes move, and where. Every adjusted fix sits on the outbound passage, between leg index 53 and leg index 108 —
