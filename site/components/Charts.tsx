@@ -32,7 +32,9 @@ export function DotPlot({ rows, width = 560, lo = -9, hi = 9 }: { rows: { label:
     {rows.map((r, i) => { const y = 16 + i * 26, a = Math.max(lo, Math.min(hi, r.a)), b = Math.max(lo, Math.min(hi, r.b)); return <g key={r.label}>
       <text x={L - 12} y={y + 4} textAnchor="end" fontFamily="var(--font-sans)" fontWeight={600} fontSize={12} fill="var(--ink)">{r.label}</text>
       <line x1={X(Math.min(a, b))} y1={y} x2={X(Math.max(a, b))} y2={y} stroke="var(--hair)" strokeWidth={2} />
-      <circle cx={X(a)} cy={y} r={5} fill="var(--series-1)" stroke="var(--panel)" strokeWidth={2} /><rect x={X(b) - 4.5} y={y - 4.5} width={9} height={9} rx={1.5} fill="var(--series-2)" stroke="var(--panel)" strokeWidth={2} /></g>; })}
+      {/* The dot is 2018's ghost and the square 2022's, so both carry the year colours the Past races page uses — one colour
+          for a year across the site. Every other chart here still colours a SERIES (leader, fleet median), not a year. */}
+      <circle cx={X(a)} cy={y} r={5} fill="var(--year-2018)" stroke="var(--panel)" strokeWidth={2} /><rect x={X(b) - 4.5} y={y - 4.5} width={9} height={9} rx={1.5} fill="var(--year-2022)" stroke="var(--panel)" strokeWidth={2} /></g>; })}
   </svg>;
 }
 export const Legend = ({ items }: { items: [string, string][] }) => <div style={{ display: "flex", gap: 18, fontSize: 12, color: "var(--graphite)" }}>{items.map(([n, c]) => <span key={n} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 14, height: 3, borderRadius: 2, background: c }} />{n}</span>)}</div>;
