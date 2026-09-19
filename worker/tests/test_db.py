@@ -130,7 +130,7 @@ def test_past_teams_and_edition_tables_roundtrip(conn):
         "design_class": "Rustler 36", "status": "finished", "start_at": 1530439200, "ended_at": 1548753120, "ended_how": "finished",
         "ended_where": "Les Sables-d’Olonne", "class_note": None, "source": "https://goldengloberace.com/"}])
     db.replace_edition_boat_days(conn, "ggr2018", [{"team_id": 8, "race_day": 12, "as_of": 1531440000, "racing": True, "finished": False, "fresh": True,
-        "fix_at": 1531440001, "lat": 27.9, "lon": -14.7, "togo_nm": 24380.0, "mg_nm": 1374.5, "sailed_nm": 1470.0, "run24_nm": 153.0,
+        "fix_at": 1531440001, "lat": 27.9, "lon": -14.7, "position_text": "27°54.0′N 014°42.0′W", "togo_nm": 24380.0, "mg_nm": 1374.5, "sailed_nm": 1470.0, "run24_nm": 153.0,
         "best24_nm": 163.0, "best24_at": 1531440000, "place": 2}])
     db.replace_edition_days(conn, "ggr2018", [{"race_day": 12, "as_of": 1531440000, "racing": 16, "finished": 0, "fresh": 16, "leader_team_id": 85,
         "leader_mg_nm": 1388.0, "median_mg_nm": 1210.0, "last_mg_nm": 1014.0, "best_run_nm": 163.0, "best_run_team_id": 85,
@@ -141,6 +141,7 @@ def test_past_teams_and_edition_tables_roundtrip(conn):
     ends = db.team_ends(conn, "ggr2018")
     assert ends[8] == {"ended_at": 1548753120, "ended_how": "finished"}
     assert conn.execute("select mg_nm from edition_boat_day where race_key='ggr2018' and team_id=8 and race_day=12").fetchone()[0] == 1374.5
+    assert conn.execute("select position_text from edition_boat_day where race_key='ggr2018' and team_id=8 and race_day=12").fetchone()[0] == "27°54.0′N 014°42.0′W"
     assert conn.execute("select round(best24_nm), extract(epoch from best24_at)::bigint from edition_boat_day where race_key='ggr2018' and team_id=8 and race_day=12").fetchone() == (163, 1531440000)
     assert conn.execute("select median_mg_nm from edition_day where race_key='ggr2018' and race_day=12").fetchone()[0] == 1210.0
     assert conn.execute("select best_sofar_team_id, extract(epoch from best_sofar_at)::bigint from edition_day where race_key='ggr2018' and race_day=12").fetchone() == (85, 1530600000)

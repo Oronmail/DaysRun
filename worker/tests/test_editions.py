@@ -2,7 +2,7 @@
 # worker's own rules (grid.window, stats.personal_bests, perf.point_of_sail) and against YB's real 2018 and 2022 files.
 import gzip, json, pathlib
 from datetime import datetime, timezone
-from ggrstats import config, course, db, editions, editions_data, stats
+from ggrstats import config, course, db, editions, editions_data, perf, stats
 from ggrstats.config import START_AT
 from ggrstats.grid import SLOT_S, gc_nm, resample, slot_of, slot_time
 
@@ -127,12 +127,36 @@ def test_an_impossible_leg_makes_no_run():
     r = editions.boat_day(P(fx), START, START + 12 * SLOT_S, COURSE_NM)
     assert r["fresh"] and r["run24_nm"] is None
 
+def test_a_fresh_row_carries_the_worker_s_own_formatted_position():
+    """The site prints position_text as it stands, never reformatting a lat/lon itself (the handoff's rounding bug:
+    a position printing as 29°60.0′N). The worker formats it once, with stats.position_text, on the fresh path."""
+    b = P(straight(START, 20.0, 12))
+    r = editions.boat_day(b, START, START + 12 * SLOT_S, COURSE_NM)
+    assert r["fresh"] and r["position_text"] == stats.position_text(r["lat"], r["lon"])
+    import re
+    assert re.fullmatch(r"\d{2}°\d{2}\.\d′[NS] \d{3}°\d{2}\.\d′[EW]", r["position_text"])
+
+def test_a_pinned_position_from_a_real_2022_boat():
+    """Simon Curwen (team 11), 2022, race day 5: pinned so a rounding regression shows up as a diff, not a shape check."""
+    start = editions_data.EDITIONS["ggr2022"]["start"]
+    row = next(r for r in editions_data.TEAMS["ggr2022"] if r["id"] == 11)
+    b = editions.prepare(load_sample("ggr2022")[11], start, row["ended_at"], row["ended_how"], LINE26)
+    T = editions.day_zero(start) + 5 * 86400
+    r = editions.boat_day(b, start, T, COURSE26_NM)
+    assert r["fresh"] and (round(r["lat"], 5), round(r["lon"], 5)) == (43.56741, -8.36454)
+    assert r["position_text"] == "43°34.0′N 008°21.9′W"
+
+def test_a_not_fresh_row_still_carries_her_last_position_as_text():
+    r2 = editions.boat_day(P(straight(START, 20.0, 12, gap_at=(12,))), START, START + 12 * SLOT_S, COURSE_NM)
+    assert not r2["fresh"] and r2["lat"] is not None
+    assert r2["position_text"] == stats.position_text(r2["lat"], r2["lon"])
+
 def test_a_boat_silent_since_before_the_gun_shows_no_position():
     """resample drops a fix before the start; the last-position lookup must too, or a boat whose tracker died on the quay would
     lie on the page at the spot she was moored."""
     fx = [{"at": START - (i + 1) * SLOT_S, "lat": 46.5, "lon": -1.79, "dtf": 1} for i in range(4)]
     r = editions.boat_day(P(fx), START, START + 3 * SLOT_S, COURSE_NM)
-    assert r["racing"] and not r["fresh"] and r["lat"] is None and r["fix_at"] is None
+    assert r["racing"] and not r["fresh"] and r["lat"] is None and r["fix_at"] is None and r["position_text"] is None
 
 def test_the_race_ends_at_the_documented_date_not_the_last_fix():
     ended = START + 12 * SLOT_S + 3600                                       # the race ended on day 2 (retired); the tracker goes on for five days
@@ -320,17 +344,67 @@ def test_a_finisher_leads_the_boats_still_at_sea_and_keeps_the_order_she_finishe
     d = editions.fleet_day(rows, T, START, None)
     assert d["finished"] == 2 and d["racing"] == 1 and d["leader_team_id"] == 1
 
-def test_a_moored_boat_is_not_in_the_mean_run():
-    """A boat back in port is still racing by the record, but a run of nought is not sailing: it stays on her own row and
-    out of the fleet's mean, best and count (amendment 3)."""
+def test_a_stopped_boat_is_not_in_the_mean_run():
+    """A boat back in port is still racing by the record, but a leg she did not sail is not sailing: on the worker's own
+    rule (perf.STOPPED_KN, perf.sailing — not a threshold of editions' own), she stays on her own row and out of the
+    fleet's mean, best and count for the report where her last 4-hour leg reads under it."""
     T = START + 12 * SLOT_S
     moored = [{"at": START + i * SLOT_S + 7, "lat": 40.0, "lon": -1.79, "dtf": 1} for i in range(13)]
     rows = {1: editions.boat_day(P(straight(START, 25.0, 12)), START, T, COURSE_NM),
             2: editions.boat_day(P(straight(START, 20.0, 12)), START, T, COURSE_NM),
             3: editions.boat_day(P(moored), START, T, COURSE_NM)}
-    assert rows[3]["racing"] and rows[3]["fresh"] and rows[3]["run24_nm"] == 0.0 and rows[3]["best24_nm"] is None
+    assert rows[3]["racing"] and rows[3]["fresh"] and rows[3]["run24_nm"] == 0.0 and rows[3]["stopped"]
     d = editions.fleet_day(rows, T, START, None)
     assert d["racing"] == 3 and d["runs_n"] == 2 and round(d["mean_run_nm"]) == 135 and d["best_run_team_id"] == 1
+
+def test_a_boat_just_above_the_threshold_is_not_stopped():
+    """The line is perf.STOPPED_KN (0.2 kt), not a round number editions invents: 0.25 kt over a 4-hour leg (1.0 nm) is IN."""
+    T = START + 12 * SLOT_S
+    moving = [{"at": START + i * SLOT_S + 7, "lat": 40.0 - i * 1.0 / 60.0, "lon": -1.79, "dtf": 1} for i in range(13)]   # 0.25 kt = 1.0 nm per 4-hour leg
+    rows = {1: editions.boat_day(P(straight(START, 25.0, 12)), START, T, COURSE_NM),
+            2: editions.boat_day(P(moving), START, T, COURSE_NM)}
+    assert not rows[2]["stopped"]
+    d = editions.fleet_day(rows, T, START, None)
+    assert d["runs_n"] == 2
+
+def test_a_stopped_boat_counts_again_the_moment_she_sails_not_for_the_rest_of_the_race():
+    """The owner's rule: left out for as long as she lies there, back in the moment she moves — never for the rest of
+    the race. A boat moored for the first twelve legs, then sailing, is out on day 2 and back in on day 3."""
+    stop_then_go = ([{"at": START + i * SLOT_S + 7, "lat": 40.0, "lon": -1.79, "dtf": 1} for i in range(13)]
+                     + [{"at": START + (13 + i) * SLOT_S + 7, "lat": 40.0 - (i + 1) * 20.0 / 60.0, "lon": -1.79, "dtf": 1} for i in range(6)])
+    b = P(stop_then_go)
+    day2 = editions.boat_day(b, START, START + 12 * SLOT_S, COURSE_NM)
+    day3 = editions.boat_day(b, START, START + 18 * SLOT_S, COURSE_NM)
+    assert day2["stopped"] and not day3["stopped"]
+    rows2 = {1: editions.boat_day(P(straight(START, 25.0, 12)), START, START + 12 * SLOT_S, COURSE_NM), 2: day2}
+    rows3 = {1: editions.boat_day(P(straight(START, 25.0, 18)), START, START + 18 * SLOT_S, COURSE_NM), 2: day3}
+    assert editions.fleet_day(rows2, START + 12 * SLOT_S, START, None)["runs_n"] == 1
+    assert editions.fleet_day(rows3, START + 18 * SLOT_S, START, None)["runs_n"] == 2
+
+def test_a_stopped_boat_is_not_the_fleet_s_best_run_so_far_while_she_lies_there():
+    """best_sofar_* is the fleet's headline, not just a lookup of whoever's personal best is largest: a boat currently
+    stopped is left out of it too, on the same report-by-report rule as mean_run_nm and best_run_nm."""
+    T = START + 12 * SLOT_S
+    moored = [{"at": START + i * SLOT_S + 7, "lat": 40.0, "lon": -1.79, "dtf": 1} for i in range(13)]
+    holder = P(moored)
+    other = P(straight(START, 20.0, 12))
+    # Give the moored boat a real personal best set earlier, before she stopped, larger than the other boat's.
+    holder["best"] = [(999.0, START + 7)] * len(holder["best"])
+    rows = {1: editions.boat_day(other, START, T, COURSE_NM), 2: editions.boat_day(holder, START, T, COURSE_NM)}
+    assert rows[2]["best24_nm"] == 999.0 and rows[2]["stopped"]                    # her own record is untouched
+    d = editions.fleet_day(rows, T, START, None)
+    assert d["best_sofar_team_id"] == 1                                           # but she does not hold the fleet's headline while stopped
+
+def test_a_stopped_leg_is_not_classed_in_the_wind_bands_while_the_fleets_moving_legs_still_are():
+    """The one the plain 24-hour-run rule got wrong: a leg the boat spent not moving is a course made good between two
+    pieces of tracker noise, and must not be classed upwind/reaching/running (perf.sailing, as perf.wind_stats applies it)."""
+    T = START + 12 * SLOT_S
+    moored = [{"at": START + i * SLOT_S + 7, "lat": 40.0, "lon": -1.79, "dtf": 1} for i in range(13)]
+    legs_by_team = {1: editions.day_legs(P(straight(START, 20.0, 12))["slots"], T), 2: editions.day_legs(P(moored)["slots"], T)}
+    assert len(legs_by_team[1]) == 6 and len(legs_by_team[2]) == 6                 # both boats have six legs to class
+    winds = {tid: {l["end_at"]: (12.0, 90.0) for l in legs} for tid, legs in legs_by_team.items()}
+    w = editions.wind_day(legs_by_team, winds)
+    assert w["wind_legs"] == 6 and w["legs_upwind"] + w["legs_reaching"] + w["legs_running"] == 6   # only boat 1's legs counted
 
 def test_a_leg_the_performance_page_would_drop_is_not_classed_for_the_wind():
     """Two consecutive slots can stand 3 h 20 min to 4 h 40 min apart, since each fix may be 20 minutes either side of its hour.
@@ -434,6 +508,30 @@ def test_guy_deboer_2022_rounded_lanzarote_the_evening_before_he_went_aground():
     # The boat lay at the marina from 21:00 with her distance to finish 0.3 m above the mark's own: the rounding is recorded as she left.
     assert abs(x["Lanzarote"] - zeg_stop("ggr2022", "Guy deBoer", 620)) < 6 * 3600
 
+def test_curwen_2022_lying_at_puerto_montt_leaves_the_fleet_s_figures_only_for_the_days_she_lies_there():
+    """Real data, not a synthetic fleet: Simon Curwen (team 11) lay in the channel by Puerto Montt from race day 164 to
+    166 — measured, her reports' own 4-hour legs read 0.004, 0.002 and 0.001 kt, all under perf.STOPPED_KN — moving again
+    by day 167 (5.1 kt). Combined with a steadily sailing boat (a different course scale: fleet_day aggregates already-
+    computed nm figures, so mixing scales is fine), she is out of the count on the three still days and in on the days
+    either side; her own run is never zeroed."""
+    start = editions_data.EDITIONS["ggr2022"]["start"]
+    row = next(r for r in editions_data.TEAMS["ggr2022"] if r["id"] == 11)
+    curwen = editions.prepare(load_sample("ggr2022")[11], start, row["ended_at"], row["ended_how"], LINE26)
+    sailor = P(straight(START, 25.0, 60))
+    stopped_days = {163: False, 164: True, 165: True, 166: True, 167: False}
+    for d, expect_stopped in stopped_days.items():
+        T = editions.day_zero(start) + d * 86400
+        curwen_row = editions.boat_day(curwen, start, T, COURSE26_NM)
+        assert curwen_row["stopped"] == expect_stopped, (d, curwen_row["run24_nm"])
+        assert curwen_row["run24_nm"] is not None                                  # her own row keeps her run regardless
+        rows = {11: curwen_row, 2: editions.boat_day(sailor, START, START + 12 * SLOT_S, COURSE_NM)}
+        d_row = editions.fleet_day(rows, T, start, None)
+        assert d_row["runs_n"] == (1 if expect_stopped else 2), (d, d_row["runs_n"])
+    # The wind bands the same way: all six legs of day 163 sail, none of day 165's do.
+    legs163 = editions.day_legs(curwen["slots"], editions.day_zero(start) + 163 * 86400)
+    legs165 = editions.day_legs(curwen["slots"], editions.day_zero(start) + 165 * 86400)
+    assert len(perf.sailing(legs163)) == 6 and len(perf.sailing(legs165)) == 0
+
 def test_deboer_2022_is_racing_at_the_report_before_the_grounding_and_gone_after_it():
     """Amendment 9: the boat went aground at 04:45 UTC on race day 14, so the 00:00 report of day 14 still counts her racing."""
     start = editions_data.EDITIONS["ggr2022"]["start"]
@@ -455,20 +553,20 @@ def test_compute_returns_the_three_tables_for_a_small_fleet():
     assert len(out["boat_days"]) == 10 and all(set(db.BOAT_DAY_COLS) <= set(r) for r in out["boat_days"])
     assert all(set(db.DAY_COLS) <= set(d) for d in out["days"])
     assert all(set(db.MILESTONE_COLS) <= set(m) for m in out["milestones"]) and len(out["milestones"]) == 2
-    assert out["notes"] == {"filled_slots": 0, "moored_runs": 0, "interp_reports": 0}
+    assert out["notes"] == {"filled_slots": 0, "stopped_legs": 0, "interp_reports": 0}
     assert {r["team_id"] for r in out["boat_days"]} == {1, 2}
 
 def test_compute_counts_what_it_added_and_what_it_left_out():
     boats = {1: three_hourly(START, 5.0, 96), 2: [{"at": START + i * SLOT_S + 7, "lat": 40.0, "lon": -1.79, "dtf": 1} for i in range(25)]}
     out = editions.compute(boats, {}, START, LINE, COURSE_NM, days=[1, 2, 3], winds={}, on_this_line=True)
-    assert out["notes"]["filled_slots"] > 0 and out["notes"]["moored_runs"] > 0
+    assert out["notes"]["filled_slots"] > 0 and out["notes"]["stopped_legs"] > 0
     assert out["notes"]["interp_reports"] == 0                                                # 00:00 lies on the 3-hour rhythm and on the grid alike
     assert editions.compute(boats, {}, START, LINE, COURSE_NM, days=[1], winds={}, on_this_line=False)["notes"]["filled_slots"] == 0
 
 def test_compute_stands_up_to_an_empty_fleet_an_empty_day_list_and_a_boat_with_no_fix():
     empty = editions.compute({}, {}, START, LINE, COURSE_NM, days=[1], winds={}, on_this_line=True)
     assert len(empty["days"]) == 1 and empty["days"][0]["racing"] == 0 and empty["days"][0]["leader_team_id"] is None
-    assert empty["boat_days"] == [] and empty["notes"] == {"filled_slots": 0, "moored_runs": 0, "interp_reports": 0}
+    assert empty["boat_days"] == [] and empty["notes"] == {"filled_slots": 0, "stopped_legs": 0, "interp_reports": 0}
     assert set(db.DAY_COLS) <= set(empty["days"][0])
     none = editions.compute({1: straight(START, 20.0, 12)}, {}, START, LINE, COURSE_NM, days=[], winds={}, on_this_line=True)
     assert none["days"] == [] and none["boat_days"] == []

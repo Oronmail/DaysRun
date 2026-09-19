@@ -5,16 +5,16 @@ Every fleet goes through the worker's own rules (grid.resample, grid.window, sta
 fixes have been measured on the 2026 course line (course.Line): a boat of 2018 and a boat of 2026 at the same spot then show the
 same figure, and no two pages of the site disagree. A boat's race ends at the documented date (editions_data), never when her
 tracker falls silent. Two things a past fleet needs that this year's does not: the 2018 fleet reported every three hours for a
-week, a rhythm the 4-hour grid meets only twice a day (fill_slots), and a boat may lie in port for weeks and still be racing by
-the record, her nought of a run kept off the fleet's average (MOORED_RUN_NM)."""
+week, a rhythm the 4-hour grid meets only twice a day (fill_slots), and a boat that is not moving (perf.STOPPED_KN, perf.sailing —
+the same rule the live pages use) is left out of the fleet's figures for exactly as long as she lies there, never for the rest
+of the race; her own row keeps her own run, her own record and her place."""
 import bisect, statistics
 from datetime import datetime, timezone
 from . import perf
 from .grid import resample, window, slot_of, slot_time, gc_nm, bearing_deg, SLOT_TOL_S
-from .stats import detect_restart, RUN24_LIMIT_NM, LEG_LIMIT_KN
+from .stats import detect_restart, position_text, RUN24_LIMIT_NM, LEG_LIMIT_KN
 
 DAY = 86400
-MOORED_RUN_NM = 10.0                 # under this in 24 hours a boat is not sailing: back in port, or stopped in the Chichester class
 RESTART_WINDOW_S = 7 * DAY           # NOR C.1.2 lets a boat return and start again only within seven days of the gun; later, a fix
                                      # outside the marina after one inside it is an ARRIVAL (2022 held Damien Guillou to this window)
 
@@ -80,8 +80,10 @@ def run_at(slots, k, t0=0):
 
 def running_best(slots, start_at, restart):
     """(best run so far, its time) at every slot, in slot order: stats.personal_bests' rule one slot at a time, so that a whole
-    race costs one pass instead of one per race day. The start day is left out as the records leave it, a run under MOORED_RUN_NM
-    is not a record, and a restart starts the count again (a restarted boat's figures count from the restart)."""
+    race costs one pass instead of one per race day. The start day is left out as the records leave it, and a restart starts the
+    count again (a restarted boat's figures count from the restart). This is the boat's OWN record: unlike the fleet's figures
+    (fleet_day), it is never filtered by whether she is moving now — a run of nought never exceeds an earlier real one, exactly
+    as stats.personal_bests already has it."""
     out, best, t0 = [], (None, None), 0
     first_out = restart["first_out_at"] if restart else None
     for k in sorted(slots):
@@ -89,7 +91,7 @@ def running_best(slots, start_at, restart):
             best, t0 = (None, None), first_out
         if slots[k]["at"] >= max(start_at + DAY, t0):
             r = run_at(slots, k, t0)
-            if r is not None and r >= MOORED_RUN_NM and (best[0] is None or r > best[0]):
+            if r is not None and (best[0] is None or r > best[0]):
                 best = (r, slots[k]["at"])
         out.append(best)
     return out
@@ -143,25 +145,32 @@ def boat_day(boat, start_at, T, course_nm):
     tolerance. A slot that fill_slots added serves the run, the wind legs and the miles sailed, never a position or a place: when
     the report's own slot is a filled one the row is the not-fresh row, as for a boat that missed the report. A boat that is not
     fresh keeps her last reported position and nothing else. Her best run so far is on every row, racing or not: a record once set
-    is not taken away when her race ends."""
+    is not taken away when her race ends. position_text is stats.position_text on whatever lat/lon the row carries, formatted once
+    here so that no page ever rounds a position itself. stopped: her own 4-hour leg ending at this report reads under
+    perf.STOPPED_KN (perf.sailing) — a fact about this one report, used to leave her out of the FLEET's figures (fleet_day) while
+    it holds; her own run24_nm and best24_nm on this row are never zeroed by it."""
     ended = boat["ended_at"] is not None and boat["ended_at"] <= T
     finished = ended and boat["ended_how"] == "finished"
     k, t0 = slot_of(T), t0_at(boat, T)
     best = best_so_far(boat, k)
     row = {"race_day": race_day_of(T, start_at), "as_of": T, "racing": T >= start_at and not ended, "finished": finished, "fresh": False,
-           "fix_at": None, "lat": None, "lon": None, "togo_nm": None, "mg_nm": None, "sailed_nm": None, "run24_nm": None,
-           "best24_nm": best[0], "best24_at": best[1], "place": None, "restarted": t0 > 0, "ended_at": boat["ended_at"]}
+           "fix_at": None, "lat": None, "lon": None, "position_text": None, "togo_nm": None, "mg_nm": None, "sailed_nm": None,
+           "run24_nm": None, "best24_nm": best[0], "best24_at": best[1], "place": None, "restarted": t0 > 0, "ended_at": boat["ended_at"],
+           "stopped": False}
     i = bisect.bisect_right(boat["real_ats"], T + SLOT_TOL_S) - 1
     if i >= 0 and boat["real"][i]["at"] >= start_at:                     # never a position from before the gun, as resample has it
-        row.update(fix_at=boat["real"][i]["at"], lat=boat["real"][i]["lat"], lon=boat["real"][i]["lon"])
+        row.update(fix_at=boat["real"][i]["at"], lat=boat["real"][i]["lat"], lon=boat["real"][i]["lon"],
+                    position_text=position_text(boat["real"][i]["lat"], boat["real"][i]["lon"]))
     if finished:
         row.update(togo_nm=0.0, mg_nm=course_nm)
     f = boat["slots"].get(k) if row["racing"] else None
     if f is None or f.get("interp"):
         return row
     togo = f["dtf"] / 1852.0
-    row.update(fresh=True, fix_at=f["at"], lat=f["lat"], lon=f["lon"], togo_nm=togo, mg_nm=course_nm - togo,
-               sailed_nm=_sailed(boat, k, t0), run24_nm=run_at(boat["slots"], k, t0))
+    w4 = window(boat["slots"], k, 1, t0, strict=True)
+    row.update(fresh=True, fix_at=f["at"], lat=f["lat"], lon=f["lon"], position_text=position_text(f["lat"], f["lon"]),
+               togo_nm=togo, mg_nm=course_nm - togo, sailed_nm=_sailed(boat, k, t0), run24_nm=run_at(boat["slots"], k, t0),
+               stopped=w4 is not None and not perf.sailing([w4]))
     return row
 
 def _order(r):
@@ -176,22 +185,27 @@ def assign_places(rows):
     return rows
 
 def day_legs(slots, T, t0=0):
-    """The six 4-hour legs of the 24 hours to the report at T that have a fix at both ends: {end_at, cmg_deg}, for the wind. Two
-    consecutive slots may stand 3 h 20 min to 4 h 40 min apart, each fix being up to 20 minutes off its own hour; perf.all_legs
-    calls a leg a leg only between 3.5 and 4.5 hours, and the wind bands use that same gate so that no leg counts here and not there."""
+    """The six 4-hour legs of the 24 hours to the report at T that have a fix at both ends: {end_at, cmg_deg, speed_kn}, for the
+    wind. Two consecutive slots may stand 3 h 20 min to 4 h 40 min apart, each fix being up to 20 minutes off its own hour;
+    perf.all_legs calls a leg a leg only between 3.5 and 4.5 hours, and the wind bands use that same gate so that no leg counts
+    here and not there. speed_kn rides along so that wind_day can leave out a leg the boat spent not moving (perf.sailing)."""
     k, out = slot_of(T), []
     for j in range(k - 5, k + 1):
         a, b = slots.get(j - 1), slots.get(j)
         if a and b and a["at"] >= t0 and 3.5 <= (b["at"] - a["at"]) / 3600.0 <= 4.5:
-            out.append({"end_at": slot_time(j), "cmg_deg": bearing_deg(a["lat"], a["lon"], b["lat"], b["lon"])})
+            h = (b["at"] - a["at"]) / 3600.0
+            out.append({"end_at": slot_time(j), "cmg_deg": bearing_deg(a["lat"], a["lon"], b["lat"], b["lon"]),
+                        "speed_kn": gc_nm(a["lat"], a["lon"], b["lat"], b["lon"]) / h})
     return out
 
 def wind_day(legs_by_team, winds):
     """winds: {team_id: {slot end time: (kt, the direction the wind blows FROM)}}. The site's own bands (perf.point_of_sail):
-    upwind under 60°, reaching to 130°, running beyond, by the course made good over the leg, which is not the boat's heading."""
+    upwind under 60°, reaching to 130°, running beyond, by the course made good over the leg, which is not the boat's heading.
+    A leg the boat spent not moving (perf.sailing, perf.STOPPED_KN) is left out first, exactly as perf.wind_stats does it for the
+    live pages: its course made good is the bearing between two pieces of tracker noise, and classing it invents a direction."""
     kts, bands = [], {"upwind": 0, "reaching": 0, "running": 0}
     for tid, legs in legs_by_team.items():
-        for l in legs:
+        for l in perf.sailing(legs):
             w = winds.get(tid, {}).get(l["end_at"])
             if not w or w[0] is None or w[1] is None:
                 continue
@@ -201,18 +215,21 @@ def wind_day(legs_by_team, winds):
 
 def fleet_day(rows, T, start_at, wind):
     """The fleet's row for the report at T. Leader, middle and last over the boats with a fix at the report plus the boats already
-    home at the course's length; the runs over the boats that were sailing, since a boat lying in port is racing by the record but
-    her nought would pull the fleet's average down. straight_pct leaves out a restarted boat: her miles sailed count from the
-    restart and her miles made good from the gun, and the ratio of the two means nothing."""
+    home at the course's length; the runs and the day's and race's best run over the boats that were MOVING at this report
+    (row['stopped'], perf.STOPPED_KN via boat_day): a boat lying in port is racing by the record, but a leg she did not sail is
+    not sailing, and is left out of the fleet's figures for exactly the reports where she lies there — never for the rest of the
+    race, and never from her own row. straight_pct leaves out a restarted boat: her miles sailed count from the restart and her
+    miles made good from the gun, and the ratio of the two means nothing."""
     racing = [(t, r) for t, r in rows.items() if r["racing"]]
     finished = [(t, r) for t, r in rows.items() if r["finished"]]
     fresh = [(t, r) for t, r in racing if r["fresh"]]
     inset = fresh + finished
     mgs = sorted((r["mg_nm"] for _, r in inset), reverse=True)
     lead = min(inset, key=lambda tr: _order(tr[1]), default=None)
-    sailing = [(t, r) for t, r in fresh if r["run24_nm"] is not None and r["run24_nm"] >= MOORED_RUN_NM]
+    sailing = [(t, r) for t, r in fresh if r["run24_nm"] is not None and not r["stopped"]]
     best = max(sailing, key=lambda tr: tr[1]["run24_nm"], default=None)
-    sofar = max(((t, r) for t, r in rows.items() if r["best24_nm"] is not None), key=lambda tr: tr[1]["best24_nm"], default=None)
+    sofar = max(((t, r) for t, r in rows.items() if r["best24_nm"] is not None and not r.get("stopped")),
+                key=lambda tr: tr[1]["best24_nm"], default=None)
     straight = [r["sailed_nm"] / r["mg_nm"] * 100.0 for _, r in fresh if not r["restarted"] and r["mg_nm"] and r["mg_nm"] > 300 and r["sailed_nm"]]
     out = {"race_day": race_day_of(T, start_at), "as_of": T, "racing": len(racing), "finished": len(finished), "fresh": len(fresh),
            "leader_team_id": lead[0] if lead else None, "leader_mg_nm": mgs[0] if mgs else None,
@@ -285,18 +302,19 @@ def compute(fixes_by_team, ends, start_at, line, course_nm, days, winds, on_this
     distances) takes `course.mark_togo(nodes, config.MARKS)`, YB's observed figure where one is known.
 
     notes says what the two rules of a past fleet added and left out, for the run's log: filled_slots, the slots fill_slots
-    supplied; moored_runs, the boat-days whose run was too small to be sailing; interp_reports, the boat-days whose own report
-    was a filled slot and are therefore not fresh."""
+    supplied; stopped_legs, the boat-days whose report's own 4-hour leg read under perf.STOPPED_KN (not moving) and so left the
+    fleet's mean, best-of-day, best-so-far and wind bands for that report; interp_reports, the boat-days whose own report was a
+    filled slot and are therefore not fresh."""
     from . import editions_data
     milestones = editions_data.MILESTONES if milestones is None else milestones
     boats = {tid: prepare(fx, start_at, ends.get(tid, {}).get("ended_at"), ends.get(tid, {}).get("ended_how"), line if on_this_line else None)
              for tid, fx in fixes_by_team.items()}
-    dz, moored, interp, out = day_zero(start_at), 0, 0, {"days": [], "boat_days": [], "milestones": [], "notes": {}}
+    dz, stopped_legs, interp, out = day_zero(start_at), 0, 0, {"days": [], "boat_days": [], "milestones": [], "notes": {}}
     for d in days:
         T = dz + d * DAY
         rows = {tid: dict(boat_day(b, start_at, T, course_nm), team_id=tid) for tid, b in boats.items()}
         assign_places(rows)
-        moored += sum(1 for r in rows.values() if r["run24_nm"] is not None and r["run24_nm"] < MOORED_RUN_NM)
+        stopped_legs += sum(1 for r in rows.values() if r["stopped"])
         interp += sum(1 for tid, b in boats.items() if rows[tid]["racing"] and (b["slots"].get(slot_of(T)) or {}).get("interp"))
         legs = {tid: day_legs(b["slots"], T, t0_at(b, T)) for tid, b in boats.items() if rows[tid]["racing"]}
         out["days"].append(fleet_day(rows, T, start_at, wind_day(legs, winds) if winds else None))
@@ -305,5 +323,5 @@ def compute(fixes_by_team, ends, start_at, line, course_nm, days, winds, on_this
         for tid, b in boats.items():
             for name, t in crossings(b["fixes"], start_at, b["ended_how"], b["ended_at"], togo_marks, milestones, until).items():
                 out["milestones"].append({"team_id": tid, "milestone": name, "passed_at": int(t), "race_day": race_day_of(t, start_at)})
-    out["notes"] = {"filled_slots": sum(b["filled"] for b in boats.values()), "moored_runs": moored, "interp_reports": interp}
+    out["notes"] = {"filled_slots": sum(b["filled"] for b in boats.values()), "stopped_legs": stopped_legs, "interp_reports": interp}
     return out

@@ -91,7 +91,7 @@ def test_2022_imported_from_a_folder_then_its_three_tables(conn, tmp_path, monke
     assert ms["Cape Horn"] == 164 and ms["Finish"] == 235
     assert "Lanzarote" in dict(rows(conn, "select milestone, race_day from edition_milestone where race_key='ggr2022' and team_id=14"))
     assert conn.execute("select count(*) from edition_boat_day where race_key='ggr2022' and team_id=14 and racing").fetchone()[0] == 14   # days 1 to 14
-    assert set(out["notes"]) == {"filled_slots", "moored_runs", "interp_reports"}
+    assert set(out["notes"]) == {"filled_slots", "stopped_legs", "interp_reports"}
     assert conn.execute("select count(*) from edition_boat_day where race_key='ggr2022'").fetchone()[0] == 5 * len(days)
 
 def test_2018_imported_from_a_folder_and_the_three_hourly_week_makes_runs(conn, tmp_path):

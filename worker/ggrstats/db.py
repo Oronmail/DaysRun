@@ -242,7 +242,7 @@ def _replace(conn, table, key, rows, cols, day_col="race_day"):
 
 DAY_COLS = ("race_day", "as_of", "racing", "finished", "fresh", "leader_team_id", "leader_mg_nm", "median_mg_nm", "last_mg_nm", "best_run_nm", "best_run_team_id",
             "best_sofar_nm", "best_sofar_team_id", "best_sofar_at", "mean_run_nm", "runs_n", "wind_kt", "wind_legs", "legs_upwind", "legs_reaching", "legs_running", "straight_pct")
-BOAT_DAY_COLS = ("team_id", "race_day", "as_of", "racing", "finished", "fresh", "fix_at", "lat", "lon", "togo_nm", "mg_nm", "sailed_nm", "run24_nm",
+BOAT_DAY_COLS = ("team_id", "race_day", "as_of", "racing", "finished", "fresh", "fix_at", "lat", "lon", "position_text", "togo_nm", "mg_nm", "sailed_nm", "run24_nm",
                  "best24_nm", "best24_at", "place")
 MILESTONE_COLS = ("team_id", "milestone", "passed_at", "race_day")
 

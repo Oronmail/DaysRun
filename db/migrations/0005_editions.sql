@@ -18,11 +18,14 @@ create table if not exists edition_day (
 create table if not exists edition_boat_day (
   race_key text not null, team_id int not null, race_day int not null, as_of timestamptz not null,
   racing boolean not null, finished boolean not null, fresh boolean not null,
-  fix_at timestamptz, lat double precision, lon double precision,
+  fix_at timestamptz, lat double precision, lon double precision, position_text text,   -- formatted once by the worker (stats.position_text)
   togo_nm double precision, mg_nm double precision, sailed_nm double precision, run24_nm double precision,
   best24_nm double precision, best24_at timestamptz,                      -- the boat's own best 24-hour run so far
   place int,
   primary key (race_key, team_id, race_day), foreign key (race_key, team_id) references team(race_key, id));
+-- create table if not exists does NOT add a column to a table that already exists: safe to re-run, and safe against a
+-- database where edition_boat_day was created before position_text existed.
+alter table edition_boat_day add column if not exists position_text text;
 create index if not exists edition_boat_day_day on edition_boat_day (race_key, race_day);
 -- When each boat passed each milestone (interpolated between fixes), and the race day of it.
 create table if not exists edition_milestone (
