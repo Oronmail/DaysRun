@@ -47,7 +47,10 @@ export function columns(now: SlideBoat[], before: SlideBoat[], legs: SlideLeg[],
 /** A boat that is not moving: its newest measured 4-hour leg is under 0.8 nm, which is 0.2 kt. A boat stopped at a mark or in a
  *  marina reports a few metres of wander (Guy deBoer at Lanzarote on 18 Sep 2026: 0.28 nm in four hours), while a boat becalmed
  *  still drifts with the current, so the line is drawn low enough that weather alone never crosses it. Its own run, bar and place
- *  are its own and stay; it is the FLEET's average that leaves it out, for as long as it lies there and not a report longer. */
+ *  are its own and stay; it is the FLEET's average that leaves it out, for as long as it lies there and not a report longer.
+ *  The same rule and the same figure live in the worker, in `worker/ggrstats/perf.py` (STOPPED_KN, sailing(), moored()),
+ *  where they also govern the speed for the wind, the point-of-sail bands and the median run of the boats nearby. Two copies,
+ *  one in Python and one here, because the board draws from the site: change one and the other must follow. */
 const STOPPED_KN = 0.2;
 export function isStopped(c: Column): boolean {
   const newest = [...c.legs].reverse().find(l => l != null);
