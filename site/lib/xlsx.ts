@@ -37,7 +37,7 @@ export function aboutLines(w: Pick<WorkbookInput, "title" | "period" | "siteHost
     ["Positions", "YB Tracking’s public feed: the same addresses the official tracker page loads."],
     ["Wind and sea", "Open-Meteo, licensed CC BY 4.0. Model values at each fix, not measured on board."],
     ["Method", `How every number is made: ${w.siteHost}/method`],
-    ["Using it", `If you publish something made from this file, please credit Day’s Run (${w.siteHost}) for the statistics, YB Tracking for the positions and Open-Meteo for the weather. Use of the data is subject to those sources’ licences and approval; Day’s Run grants no rights over it.`],
+    ["Using it", "The positions come from YB Tracking and the weather from Open-Meteo. If you use the data, please follow those sources’ guidelines."],
   ];
 }
 

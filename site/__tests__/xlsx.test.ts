@@ -23,10 +23,11 @@ describe("a month’s data file", () => {
     for (const sheet of [2, 3, 4, 5]) expect(firstRow(may, sheet), `sheet ${sheet}`).toBe(firstRow(sep, sheet));   // the header rows, cell for cell
     expect(names(may)).toEqual(names(sep));
   });
-  it("says unofficial, carries the do-not-relay notice of NOR F.8.2, credits YB's public feed and Open-Meteo, claims no rights over their data, calls the wind a model, and says how to put months together", () => {
+  it("says unofficial, carries the do-not-relay notice of NOR F.8.2, names YB's public feed and Open-Meteo and asks only that their guidelines be followed, calls the wind a model, and says how to put months together", () => {
     const text = aboutLines({ title: "t", period: "p", siteHost: "daysrun.net", madeIso: "2026-09-17T00:06:00.000Z", newestIso: "2026-09-17T00:00:00+00:00" }).map(l => l.join(" ")).join("\n");
-    for (const must of [/Unofficial/, /Not affiliated/, /may be relayed to a competitor \(Notice of Race F\.8\.2\)/, /YB Tracking’s public feed/, /Open-Meteo, licensed CC BY 4\.0/, /Model values/, /never means zero/, /they stack/, /daysrun\.net\/data/, /2026-09-17 00:00 UTC/, /subject to those sources’ licences and approval/, /grants no rights/]) expect(text).toMatch(must);
+    for (const must of [/Unofficial/, /Not affiliated/, /may be relayed to a competitor \(Notice of Race F\.8\.2\)/, /YB Tracking’s public feed/, /Open-Meteo, licensed CC BY 4\.0/, /Model values/, /never means zero/, /they stack/, /daysrun\.net\/data/, /2026-09-17 00:00 UTC/, /please follow those sources’ guidelines/]) expect(text).toMatch(must);
     expect(text).not.toMatch(/with (its |their )?permission|free to use/i);      // the site has no permission from YB and must never say it has
+    expect(text).not.toMatch(/please credit|grants no rights|approval/i);        // the owner, 19 Sep 2026: too harsh; no credit asked, only the sources' guidelines
   });
   it("names nobody: no author, no last-modified-by, anywhere in the file", async () => {
     const meta = Object.entries(files(await buildWorkbook(input(month(2026, 9, 2))))).filter(([f]) => f.startsWith("docProps/")).map(([, d]) => strFromU8(d)).join("");
