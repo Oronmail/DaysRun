@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import { SITE_NAME } from "../lib/format";
 import { PAGES, SITE_URL, SHARE_IMAGE, pageMeta, skipperMeta, sitemapPaths, robotsRules, websiteJsonLd, jsonLdText } from "../lib/seo";
 
-const ROUTES = ["/", "/w/4h", "/w/7d", "/skippers", "/ghosts", "/records", "/records/7d", "/records/30d", "/course", "/performance", "/boats", "/conditions", "/data", "/method"];
+const ROUTES = ["/", "/skippers", "/ghosts", "/records", "/records/7d", "/records/30d", "/course", "/performance", "/boats", "/conditions", "/data", "/method"];
 const mara = { id: 11, name: "Mara Løvenskiold Kveseth", first_name: "Mara", yacht: "Showgirl", model: "Saltram Saga 36" };
 // the longest real names, yachts and designs of the fleet: a skipper's words must fit too
 const guido = { id: 3, name: "Guido Cantini", first_name: "Guido", yacht: "Hannah of Cowes", model: "Vancouver 34 Classic" };

@@ -3,7 +3,7 @@
 import { highest } from "@/lib/highest";
 export default function SpeedBars({ log, width = 126, height = 24, max = 8 }: { log: (number | null)[]; width?: number; height?: number; max?: number }) {
   const bw = width / 42, gold = highest(log, v => v.toFixed(1));
-  return <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }} role="img" aria-label="Speed on each 4-hour leg over the last 7 days">
+  return <svg className="speedbars" width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ display: "block" }} role="img" aria-label="Speed on each 4-hour leg over the last 7 days">
     {log.map((v, i) => v == null
       ? <rect key={i} x={i * bw} y={height - 2} width={bw - 1} height={2} fill="var(--tick)" />
       : <rect key={i} x={i * bw} y={height - Math.max(1.5, Math.min(v, max) / max * height)} width={bw - 1} height={Math.max(1.5, Math.min(v, max) / max * height)} rx={1} fill={gold.has(i) ? "var(--gold)" : "var(--bar)"} />)}

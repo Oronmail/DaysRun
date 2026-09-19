@@ -7,7 +7,7 @@ const base = { as_of: "2026-09-17T00:00:00+00:00", team_id: 8, closes_day: true,
 const fleet = (asOf: string, n = 16): ExportRaw[] => Array.from({ length: n }, (_, i) => ({ ...base, as_of: asOf, team_id: i + 1, rank: i + 1, skipper: `Skipper ${String.fromCharCode(65 + i)}`, run24_nm: 120 + i, legs_complete: 6 }));
 // A whole month: 31 days x 6 reports x 16 boats, the most a file ever holds.
 const month = (y: number, m: number, days = 31) => Array.from({ length: days * 6 }, (_, i) => fleet(new Date(Date.UTC(y, m - 1, 1, 4 * (i + 1))).toISOString())).flat();
-const input = (reports: ExportRaw[]) => ({ title: "Golden Globe Race 2026 · September 2026", period: "September 2026, complete", siteHost: "daysrun.vercel.app", startIso: "2026-09-06T12:30:00+00:00", madeIso: "2026-09-17T00:06:00.000Z", standing: reports.slice(-16), daily: reports.filter(r => r.as_of.slice(11, 13) === "00"), reports });
+const input = (reports: ExportRaw[]) => ({ title: "Golden Globe Race 2026 · September 2026", period: "September 2026, complete", siteHost: "daysrun.net", startIso: "2026-09-06T12:30:00+00:00", madeIso: "2026-09-17T00:06:00.000Z", standing: reports.slice(-16), daily: reports.filter(r => r.as_of.slice(11, 13) === "00"), reports });
 const files = (buf: Buffer) => unzipSync(new Uint8Array(buf));
 const names = (buf: Buffer) => [...strFromU8(files(buf)["xl/workbook.xml"]).matchAll(/<sheet [^>]*name="([^"]+)"/g)].map(m => m[1]);
 const firstRow = (buf: Buffer, sheetIndex: number) => (strFromU8(files(buf)[`xl/worksheets/sheet${sheetIndex}.xml`]).match(/<row[^>]*>[\s\S]*?<\/row>/) ?? [""])[0];
@@ -24,8 +24,8 @@ describe("a month’s data file", () => {
     expect(names(may)).toEqual(names(sep));
   });
   it("says unofficial, carries the do-not-relay notice of NOR F.8.2, credits YB's public feed and Open-Meteo, claims no rights over their data, calls the wind a model, and says how to put months together", () => {
-    const text = aboutLines({ title: "t", period: "p", siteHost: "daysrun.vercel.app", madeIso: "2026-09-17T00:06:00.000Z", newestIso: "2026-09-17T00:00:00+00:00" }).map(l => l.join(" ")).join("\n");
-    for (const must of [/Unofficial/, /Not affiliated/, /may be relayed to a competitor \(Notice of Race F\.8\.2\)/, /YB Tracking’s public feed/, /Open-Meteo, licensed CC BY 4\.0/, /Model values/, /never means zero/, /they stack/, /daysrun\.vercel\.app\/data/, /2026-09-17 00:00 UTC/, /subject to those sources’ licences and approval/, /grants no rights/]) expect(text).toMatch(must);
+    const text = aboutLines({ title: "t", period: "p", siteHost: "daysrun.net", madeIso: "2026-09-17T00:06:00.000Z", newestIso: "2026-09-17T00:00:00+00:00" }).map(l => l.join(" ")).join("\n");
+    for (const must of [/Unofficial/, /Not affiliated/, /may be relayed to a competitor \(Notice of Race F\.8\.2\)/, /YB Tracking’s public feed/, /Open-Meteo, licensed CC BY 4\.0/, /Model values/, /never means zero/, /they stack/, /daysrun\.net\/data/, /2026-09-17 00:00 UTC/, /subject to those sources’ licences and approval/, /grants no rights/]) expect(text).toMatch(must);
     expect(text).not.toMatch(/with (its |their )?permission|free to use/i);      // the site has no permission from YB and must never say it has
   });
   it("names nobody: no author, no last-modified-by, anywhere in the file", async () => {
