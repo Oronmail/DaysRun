@@ -23,7 +23,7 @@ export default async function Page() {
         {months.map(m => <div key={m} style={row}>
           <div><div className="mont" style={{ fontSize: 16, fontWeight: 600 }}>{monthLabel(m)}</div><div className="small">{covers(m)} · {state(m)}</div></div>
           <a className="mont" style={{ fontSize: 14, fontWeight: 600 }} href={`/data/${monthFile(m)}`} download>Download .xlsx</a></div>)}
-        <div style={{ fontSize: 14, lineHeight: 1.55, paddingTop: 10 }}>Every file holds its month in full: one row per boat per day, and one row per boat per 4-hourly report. They all have the same columns in the same order, so months stack — for more than one month, take them all and paste the rows together, or point Excel’s Get Data at the folder. Every row carries the figures that reach further back than its month: the 7-day run, the totals since the start, the bests. A September row and a May row compare directly.</div>
+        <div style={{ fontSize: 14, lineHeight: 1.55, paddingTop: 10 }}>Every file holds its month in full: one row per boat per day, and one row per boat per 4-hourly report.</div>
         <div style={{ fontSize: 14, lineHeight: 1.55, paddingTop: 4 }}>Unofficial. Nothing in these files may be relayed to a competitor (NOR F.8.2). The positions are YB Tracking’s public feed; the wind and sea are Open-Meteo’s (CC BY 4.0), model values, not measured on board. If you publish something made from a file, please credit Day’s Run for the statistics and those sources for the data; use of the data is subject to their licences and approval, and Day’s Run grants no rights over it.</div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
