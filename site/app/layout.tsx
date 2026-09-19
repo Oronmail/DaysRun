@@ -1,7 +1,10 @@
 // site/app/layout.tsx — <Analytics /> is Vercel Web Analytics: visits counted without cookies, from this site's own address (/_vercel/insights)
+// <GoogleTag /> is Google Analytics 4, which does set a cookie: it is what knows a returning reader. No id set, no tag (lib/analytics.ts).
 import type { Metadata } from "next";
 import { Montserrat, IBM_Plex_Mono, Source_Serif_4, Permanent_Marker } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import GoogleTag from "@/components/GoogleTag";
+import { gaMeasurementId } from "@/lib/analytics";
 import { PAGES, SITE_URL, SHARE_IMAGE } from "@/lib/seo";
 import { SITE_NAME } from "@/lib/format";
 import "./globals.css";
@@ -18,5 +21,5 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   // On a device without hover (a phone), a tap on a chart's target opens its box and a tap elsewhere closes it; the boat's link
   // inside the box is how the reader goes on to the skipper's page. Twelve lines, no framework: the pages stay static.
   const tap = `(function(){if(!matchMedia('(hover: none)').matches)return;document.addEventListener('click',function(e){var t=e.target.closest('.pt');var open=document.querySelectorAll('.pt.open');if(!t||t.classList.contains('open')&&!e.target.closest('.tipbox')){open.forEach(function(p){p.classList.remove('open')});return}if(e.target.closest('.tipbox'))return;e.preventDefault();open.forEach(function(p){p.classList.remove('open')});t.classList.add('open')},true)})();`;
-  return <html lang="en" className={`${sans.variable} ${mono.variable} ${serif.variable} ${marker.variable}`}><body>{children}<Analytics /><script dangerouslySetInnerHTML={{ __html: tap }} /></body></html>;
+  return <html lang="en" className={`${sans.variable} ${mono.variable} ${serif.variable} ${marker.variable}`}><body>{children}<Analytics /><GoogleTag id={gaMeasurementId({ GA_MEASUREMENT_ID: process.env.GA_MEASUREMENT_ID, VERCEL_ENV: process.env.VERCEL_ENV })} /><script dangerouslySetInnerHTML={{ __html: tap }} /></body></html>;
 }
