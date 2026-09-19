@@ -25,6 +25,18 @@ def upsert_race(conn, key, setup, start_at=None):
                     course_km=excluded.course_km, raw_setup=excluded.raw_setup, updated_at=now()""",
                  (key, setup.get("title"), ts(start), setup["course"].get("distance"), Jsonb(setup)))
 
+def race_class(team, setup_tags, override=None):
+    """Which class a boat is racing in: Suhaili unless YB has her in its Chichester Class tag (NOR C.2.1, C.2.2). None for a
+    replay, which races in no class. `override` (config.CLASS_OVERRIDE) stands in for a class the race has announced and YB has
+    not yet written down, and is ignored the moment YB agrees."""
+    names = {t["id"]: t.get("name") for t in setup_tags or []}
+    mine = [names.get(i) for i in team.get("tags") or []]
+    if "Previous Competitors" in mine and "All Boats" not in mine:
+        return None
+    if "Chichester Class" in mine or (override or {}).get(team["id"]) == "Chichester":
+        return "Chichester"
+    return "Suhaili"
+
 def upsert_teams(conn, key, setup):
     rows = []
     for t in setup["teams"]:
@@ -34,14 +46,16 @@ def upsert_teams(conn, key, setup):
                      names.COUNTRY_CODE.get(t.get("country") or "", ""), t.get("flag"),
                      names.GHOST_BOAT.get(tid, names.MODEL.get(tid, t.get("model"))), names.YACHT.get(tid, t.get("owner")),
                      names.DESIGN_CLASS.get(tid), str(t.get("sail") or ""), t.get("colour"), ghost,
-                     config.GHOSTS.get(tid), t.get("status"), ts(t.get("start"))))
+                     config.GHOSTS.get(tid), t.get("status"), ts(t.get("start")),
+                     None if ghost else race_class(t, setup.get("tags"), config.CLASS_OVERRIDE)))
     conn.cursor().executemany("""insert into team (race_key, id, name, first_name, country, country_code, flag, model, yacht,
-                    design_class, sail, colour, is_ghost, ghost_label, status, start_at)
-                    values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    design_class, sail, colour, is_ghost, ghost_label, status, start_at, race_class)
+                    values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     on conflict (race_key, id) do update set name=excluded.name, first_name=excluded.first_name,
                     country=excluded.country, country_code=excluded.country_code, flag=excluded.flag, model=excluded.model, yacht=excluded.yacht,
                     design_class=excluded.design_class, sail=excluded.sail, colour=excluded.colour, is_ghost=excluded.is_ghost,
-                    ghost_label=excluded.ghost_label, status=excluded.status, start_at=excluded.start_at""", rows)
+                    ghost_label=excluded.ghost_label, status=excluded.status, start_at=excluded.start_at,
+                    race_class=excluded.race_class""", rows)
 
 def insert_fixes(conn, key, teams):
     """Insert decoded fixes; existing (team, at) rows are left alone. Returns the number of new rows."""
@@ -141,8 +155,8 @@ def replace_snapshot(conn, key, as_of, snap):
             cur.execute("""insert into boat_stat (race_key, team_id, as_of, rank, rank_change, dtf_nm, gap_nm, interval_nm, last_fix_at, stale,
                 lat, lon, position_text, spd4, vmg4, cmg4, spd24, vmg24, run24_nm, spd7, run7_nm, best4_kn, best4_at, best24_nm, best24_at,
                 best7_nm, best7_at, sailed_nm, made_good_nm, vmg7_kn, pb24, fleet_best24, vs_vdh_nm, vs_vdh_days, vs_kirsten_nm, vs_kirsten_days,
-                next_mark, next_mark_nm, next_mark_eta, restart_at, speed_log_json, gain24_nm, vs_near_nm, near_n, lever_nm, lever_dir)
-                values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                next_mark, next_mark_nm, next_mark_eta, restart_at, speed_log_json, gain24_nm, vs_near_nm, near_n, lever_nm, lever_dir, run24_bridged)
+                values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (key, b["id"], a, b["rank"], b["rank_change"], b["dtf_nm"], b["gap_nm"], b["interval_nm"], ts(b["last_fix_at"]), b["stale"],
                  b["lat"], b["lon"], b["position_text"], w4.get("speed_kn"), w4.get("vmg_kn"), w4.get("cmg_deg"),
                  w24.get("speed_kn"), w24.get("vmg_kn"), w24.get("dist_nm"), w7.get("speed_kn"), w7.get("dist_nm"),
@@ -150,7 +164,7 @@ def replace_snapshot(conn, key, as_of, snap):
                  b["sailed_nm"], b["made_good_nm"], b["vmg7_kn"], b["pb24"], b["fleet_best24"],
                  b["vs_vdh_nm"], b["vs_vdh_days"], b["vs_kirsten_nm"], b["vs_kirsten_days"],
                  b["next_mark"], b["next_mark_nm"], ts(b["next_mark_eta"]), ts(b["restart"]["first_out_at"]) if b.get("restart") else None,
-                 Jsonb(b["speed_log"]), b.get("gain24_nm"), b.get("vs_near_nm"), b.get("near_n"), b.get("lever_nm"), b.get("lever_dir")))
+                 Jsonb(b["speed_log"]), b.get("gain24_nm"), b.get("vs_near_nm"), b.get("near_n"), b.get("lever_nm"), b.get("lever_dir"), bool(w24.get("bridged"))))
             p = b.get("perf")
             if p:
                 cur.execute("insert into boat_perf values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",

@@ -10,9 +10,26 @@ DAY = 86400
 def sorted_fixes(moments):
     return sorted(moments, key=lambda m: m["at"])
 
-def at_or_before(fixes, t, tol_s=1200):
-    c = [f for f in fixes if f["at"] <= t + tol_s]
-    return c[-1] if c else None
+def fix_at(fixes, t, tol_s=1200, need_dtf=True):
+    """The fix that belongs to the report at t: the one NEAREST t within tol_s, and failing that the latest one before t.
+
+    The same rule as grid.resample, which the legs and runs have always used; before 19 Sep 2026 this took the LATEST fix up to
+    tol_s AFTER t instead, so a boat reporting every ten minutes near a landfall was placed by her 00:20 fix while her neighbours
+    were placed by their 00:00 ones. A dead heat goes to the earlier fix, the report being at or before. The fallback is what keeps
+    a silent boat in the fleet: she is placed at her last known position and marked stale, rather than vanishing from the snapshot
+    (which the sanity gate would refuse). `fixes` is sorted ascending.
+
+    A fix with no distance to finish is passed over, as grid.resample passes over it: the start days' tracks hold dozens of such
+    in-port noise fixes, and on 19 Sep 2026 the first re-derive under this rule placed Andrea at the finish on one of them (07 Sep
+    04:00:00, distance nought) until the sanity gate refused the report. need_dtf=False is for the replays, some of whose
+    positions carry no distance at all (Moitessier's 1968 ones)."""
+    if need_dtf:
+        fixes = [f for f in fixes if f.get("dtf")]
+    near = [f for f in fixes if abs(f["at"] - t) <= tol_s]
+    if near:
+        return min(near, key=lambda f: (abs(f["at"] - t), f["at"]))
+    before = [f for f in fixes if f["at"] <= t]
+    return before[-1] if before else None
 
 def detect_restart(fixes, start_at, port=config.LES_SABLES, radius_nm=1.0, after_s=6 * 3600):
     """A boat back within radius_nm of the Les Sables marina more than after_s after the gun, then out again.
@@ -28,7 +45,7 @@ def rank_at(fleet, t):
     """fleet: {team_id: fixes sorted ascending}, racing boats only. Rank by distance to finish of the latest fix at or before t."""
     rows = []
     for tid, fx in fleet.items():
-        f = at_or_before(fx, t)
+        f = fix_at(fx, t)
         if f:
             rows.append((f["dtf"], tid))
     return {tid: i + 1 for i, (_, tid) in enumerate(sorted(rows))}
@@ -41,7 +58,7 @@ def place_changes(fleet, T, stale_h=3.5):
     def current(t):
         out = {}
         for tid, fx in fleet.items():
-            f = at_or_before(fx, t)
+            f = fix_at(fx, t)
             if f and f.get("dtf") and (t - f["at"]) / 3600.0 < stale_h:
                 out[tid] = f["dtf"]
         return out
@@ -101,7 +118,7 @@ def ghost_time_gap_days(ghost_fixes, boat_dtf_nm, T):
             t_ghost = a["at"] + (a["dtf"] - target) / (a["dtf"] - b["dtf"]) * (b["at"] - a["at"])
             return -(T - t_ghost) / DAY
     last = fx[-1]
-    old = at_or_before(fx, last["at"] - 7 * DAY) or fx[0]
+    old = fix_at(fx, last["at"] - 7 * DAY) or fx[0]
     if last["at"] <= old["at"] or old["dtf"] <= last["dtf"]:
         return None
     pace_m_per_s = (old["dtf"] - last["dtf"]) / (last["at"] - old["at"])
@@ -164,11 +181,12 @@ def moored(b):
 def against_the_nearby(boats, radius_nm=150.0, min_boats=2):
     """Each boat's 24-hour run against the MEDIAN run of the boats within `radius_nm`, which sail much the same weather.
     A boat that is not moving is left out of that median: she sails no weather at all, and one motionless boat moves a small
-    median a long way (18 Sep 2026, Guy deBoer lying at Lanzarote among the boats rounding the mark). She keeps her own figure,
-    measured against the boats that are sailing — the miles she covered are a fact. Sets vs_near_nm and near_n on each boat."""
+    median a long way (18 Sep 2026, Guy deBoer lying at Lanzarote among the boats rounding the mark). So is a boat whose own run
+    crossed a silent tracker, that run being a lower bound rather than a measurement. Both keep their own figure, measured against
+    the boats that are sailing — the miles they covered are a fact. Sets vs_near_nm and near_n on each boat."""
     for b in boats:
         near = sorted(o["w24"]["dist_nm"] for o in boats if o is not b and o["w24"] and not o["stale"] and not moored(o)
-                      and gc_nm(b["lat"], b["lon"], o["lat"], o["lon"]) < radius_nm)
+                      and not o["w24"].get("bridged") and gc_nm(b["lat"], b["lon"], o["lat"], o["lon"]) < radius_nm)
         b["near_n"] = len(near)
         if not (b["w24"] and not b["stale"] and len(near) >= min_boats):
             b["vs_near_nm"] = None
@@ -190,10 +208,10 @@ def compute_snapshot(setup, fixes_by_team, T, conditions=None):
     ghosts = {}
     for gid in config.GHOSTS:
         fx = fixes_by_team.get(gid, [])
-        f = at_or_before(fx, T)
+        f = fix_at(fx, T, need_dtf=False)
         if not f:
             continue
-        old = at_or_before(fx, f["at"] - 7 * DAY) or fx[0]
+        old = fix_at(fx, f["at"] - 7 * DAY, need_dtf=False) or fx[0]
         pace = ((old["dtf"] - f["dtf"]) / 1852.0) / ((f["at"] - old["at"]) / DAY) if f["at"] > old["at"] else None
         ghosts[gid] = {"dtf_nm": f["dtf"] / 1852.0 if f.get("dtf") else None, "fix_at": f["at"], "lat": f["lat"], "lon": f["lon"],
                        "pace7_nm_day": pace, "nfix": len(fx)}
@@ -201,7 +219,7 @@ def compute_snapshot(setup, fixes_by_team, T, conditions=None):
     boats = []
     for tid in racing_ids:
         fx = racing[tid]
-        f = at_or_before(fx, T)
+        f = fix_at(fx, T)
         if not f:
             continue
         restart = detect_restart(fx, start_at)
@@ -213,7 +231,7 @@ def compute_snapshot(setup, fixes_by_team, T, conditions=None):
         w7 = window(slots, kl, 42, t0) if kl is not None else None
         best4, best24, best7 = personal_bests(slots, KT, t0, start_at)
         leg_rows = legs(slots, kl, 42, t0) if kl is not None else []
-        old = at_or_before(fx, max(f["at"] - 7 * DAY, t0))
+        old = fix_at(fx, max(f["at"] - 7 * DAY, t0))
         vmg7 = ((old["dtf"] - f["dtf"]) / 1852.0) / ((f["at"] - old["at"]) / 3600.0) if old and f["at"] > old["at"] else 0.0
         least = least_dtf_nm(fx, t0, T)
         mark_name, mlat, mlon = course.next_mark((least if least is not None else f["dtf"]) / 1852.0, config.MARKS, togo)
@@ -251,7 +269,7 @@ def compute_snapshot(setup, fixes_by_team, T, conditions=None):
     # The angles YB does not give (perf.py). All three are fix-to-fix and skip a boat without a current fix, so that a missed
     # report never shows as a hundred miles lost.
     def dtf_near(fx, t):
-        f = at_or_before(fx, t)
+        f = fix_at(fx, t)
         return f["dtf"] / 1852.0 if f and f.get("dtf") and t - f["at"] < 3.5 * 3600 else None
     leader = boats[0]
     lead_now, lead_then = dtf_near(racing[leader["id"]], T), dtf_near(racing[leader["id"]], T - DAY)

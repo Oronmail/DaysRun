@@ -204,3 +204,20 @@ def test_replace_with_empty_rows_touches_nothing(conn):
     assert conn.execute("select count(*) from edition_day where race_key='ggr2018'").fetchone()[0] == 2        # untouched
     assert conn.execute("select count(*) from edition_boat_day where race_key='ggr2018'").fetchone()[0] == 2   # untouched
     assert conn.execute("select count(*) from edition_milestone where race_key='ggr2018'").fetchone()[0] == 0  # the new (empty) whole-race state
+
+
+def test_the_class_comes_from_ybs_own_tag_and_the_override_only_stands_in_until_it_does():
+    """NOR C.2.1: every entrant starts in the Suhaili class. C.2.2: one who makes an unapproved stop or receives material
+    assistance is placed in the Chichester class. YB carries it as a tag on the team. On 18 Sep 2026 the race announced on its own
+    account that Guy deBoer had been moved to the Chichester class after stopping at Marina Rubicón for repairs, and YB had not
+    changed its tag a day later — hence an override that names its source and its date, and that counts for nothing the moment
+    YB's own data says the same."""
+    from ggrstats import db
+    tags = [{"id": 84200, "name": "All Boats"}, {"id": 84707, "name": "Chichester Class"}, {"id": 84554, "name": "Previous Competitors"}]
+    cls = lambda tid, team_tags, override=None: db.race_class({"id": tid, "tags": team_tags}, tags, override or {})
+    assert cls(1, [84200]) == "Suhaili"
+    assert cls(5, [84200, 84707]) == "Chichester"                      # YB has moved her
+    assert cls(978, [84554]) is None                                   # a replay is in no class
+    assert cls(5, [84200], {5: "Chichester"}) == "Chichester"          # the override stands in
+    assert cls(5, [84200, 84707], {5: "Chichester"}) == "Chichester"   # and agrees once YB says it
+    assert cls(1, [84200], {5: "Chichester"}) == "Suhaili"             # it names one boat and no other

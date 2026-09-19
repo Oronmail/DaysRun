@@ -190,3 +190,42 @@ def test_a_boat_that_is_not_moving_is_no_part_of_her_neighbours_median():
     far = [boat(1, 150, 6.0), boat(2, 140, 5.5, lat=40.0), boat(3, 130, 5.0, lat=41.0)]
     stats.against_the_nearby(far)
     assert far[0]["vs_near_nm"] is None and far[0]["near_n"] == 0                      # nobody within 150 nm: nothing to say
+
+
+def test_a_report_takes_the_fix_nearest_the_hour_not_the_latest_one_after_it():
+    """The grid (grid.resample) has always taken the fix NEAREST each report hour, but a boat's own place, distance to finish and
+    position came from a rule that took the LATEST fix up to twenty minutes AFTER the hour. With four-hourly reports the two pick
+    the same fix; with a fast tracker they do not. YB stamps a report 1 to 179 seconds after the hour, and a boat set to report
+    every ten or fifteen minutes near a landfall (Andrea at Lanzarote, Guy moored there on 18 Sep) then had her 00:20 fix used
+    against her neighbours' 00:00 ones — about two miles of head start, enough to invent a pass. One rule now: nearest wins."""
+    from ggrstats import stats
+    T = 1789516800                                                           # a report hour
+    f = lambda at: {"at": at, "dtf": 1000.0, "lat": 0.0, "lon": 0.0}
+    take = lambda fixes: stats.fix_at(fixes, T)["at"] - T
+
+    assert take([f(T + 179)]) == 179                                         # the ordinary case: YB stamps the report seconds late
+    assert take([f(T + 3)]) == 3
+    assert take([f(T - 60 * 60), f(T + 3), f(T + 20 * 60)]) == 3             # a ten-minute tracker: the fix ON the hour, not the latest
+    assert take([f(T - 600), f(T + 900)]) == -600                            # nearest, whichever side of the hour it falls
+    assert take([f(T - 600), f(T + 600)]) == -600                            # a dead heat goes to the earlier: the report is at or before
+    assert take([f(T - 4 * 3600), f(T + 1201)]) == -4 * 3600                 # past the tolerance: the fix after the hour is not this report's
+    assert take([f(T - 5 * 3600)]) == -5 * 3600                              # a silent boat still has her last position: she must not vanish
+    assert stats.fix_at([], T) is None
+    assert stats.fix_at([f(T + 1201)], T) is None                            # nothing at or before, and nothing near: nothing to say
+
+
+def test_a_fix_with_no_distance_to_finish_is_never_the_one_a_report_uses():
+    """19 Sep 2026, the first re-derive under the nearest-fix rule stopped at 07 Sep 04:00: Andrea's tracker had logged a fix at
+    04:00:00 exactly with a distance to finish of ZERO — one of the in-port noise fixes of the start days, which grid.resample has
+    always thrown away. The old rule took the latest fix (04:20) and never met it; the new one took the nearest and placed her at
+    the finish, and the sanity gate refused the snapshot. A report now passes over such a fix, as the grid does. A replay may have
+    no distance at all (Moitessier's 1968 positions carry none), so for the replays the filter is off."""
+    from ggrstats import stats
+    T = 1789516800
+    f = lambda at, dtf: {"at": at, "dtf": dtf, "lat": 0.0, "lon": 0.0}
+    andrea = [f(T - 300, 47650103), f(T, 0), f(T + 600, 47647459), f(T + 1200, 47645733)]          # 03:55, 04:00 (noise), 04:10, 04:20
+    assert stats.fix_at(andrea, T)["at"] == T - 300                                                # the nearest fix that has a distance
+    assert stats.fix_at([f(T, None), f(T - 4 * 3600, 5.0e7)], T)["at"] == T - 4 * 3600             # none near: her last real position
+    moitessier = [f(T - 60, 0), f(T - 90000, 0)]
+    assert stats.fix_at(moitessier, T) is None                                                     # a racing boat is never placed at nought
+    assert stats.fix_at(moitessier, T, need_dtf=False)["at"] == T - 60                             # a replay keeps her position

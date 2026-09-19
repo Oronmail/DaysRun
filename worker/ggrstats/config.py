@@ -39,3 +39,11 @@ def race_start(setup):
     if not starts:
         raise ValueError("RaceSetup carries no start time, on a tag or on a boat")
     return min(starts)
+
+
+# A class the race has announced but YB has not yet put in its own data. Each entry names its source and its date, and counts for
+# nothing the moment YB's tag says the same; delete it then. NOR C.2.2 leaves the decision to the GGR Director or Chairman, so the
+# only sources allowed here are the race's own: nothing goes in on an inference of ours, however plain the tracker makes it.
+# 5 = Guy deBoer: the Golden Globe Race announced on its own account on 18 Sep 2026 that he moves to the Chichester class after
+# stopping at Marina Rubicon, Lanzarote, for repairs (a damaged port lower chainplate lifting and cracking the deck).
+CLASS_OVERRIDE = {5: "Chichester"}

@@ -11,7 +11,7 @@ import { nm, kn, sgn, hhmm, dayMon } from "@/lib/format";
 import SpeedBars from "./SpeedBars";
 import { Tri, Course } from "./Who";
 export default function RankingList({ boats, window = "24h" }: { boats: RankRow[]; window?: "4h" | "24h" | "7d" }) {
-  const run = (b: BoatStat) => window === "4h" ? `${kn(b.spd4)} kt / 4 h` : window === "7d" ? `${nm(b.run7_nm)} nm / 7 d` : `${nm(b.run24_nm)} nm / 24 h`;
+  const run = (b: BoatStat) => window === "4h" ? `${kn(b.spd4)} kt / 4 h` : window === "7d" ? `${nm(b.run7_nm)} nm / 7 d` : `${b.run24_bridged && b.run24_nm != null ? "\u2265\u2009" : ""}${nm(b.run24_nm)} nm / 24 h`;
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "rank", dir: "asc" });
   const rows = sortBoats(boats, sort.key, sort.dir, window);
   return <div>

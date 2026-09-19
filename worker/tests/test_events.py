@@ -57,3 +57,22 @@ def test_best_run_events_fire_when_set_not_every_four_hours():
     ev = events.derive(s, other, [])
     assert [e["team_id"] for e in ev if e["kind"] == "fleet_best24"] == [12]                 # Henry takes it: one event
     assert len([e for e in ev if e["kind"] == "pb24"]) == 5
+
+
+def test_a_rounding_is_keyed_by_the_boat_and_the_mark_so_a_re_derive_never_says_it_twice():
+    """18 Sep 2026: a re-derive of history said two Lanzarote roundings a second time (events 2334 and 2338, deleted by hand),
+    because a rounding was keyed by boat and DATE — recompute it under a different rule and it can land on a report of another
+    day, which is a new key and so a new event. A mark is rounded once: boat and mark are the key."""
+    from ggrstats import events
+    snap = {"as_of": 1789516800, "boats": [
+        {"id": 12, "first": "Henry", "next_mark": "Trindade", "next_mark_nm": 2790.0, "next_mark_eta": None, "stale": False,
+         "w24": {"dist_nm": 150.0}, "fleet_best24": False, "pb24": False, "best24_nm": 180.0, "restart": None, "gap_nm": 0}]}
+    prev = [{"team_id": 12, "next_mark": "Lanzarote", "stale": False, "fleet_best24": False, "pb24": False, "restart_at": None}]
+    out = events.derive(snap, prev, [])
+    rounding = [e for e in out if e["kind"] == "next_mark" and "rounded" in e["title"].lower() or e["kind"] == "next_mark" and "Lanzarote" in e["title"]]
+    assert len(rounding) == 1, out
+    assert rounding[0]["dedupe_key"] == "next_mark:12:Lanzarote"
+
+    later = dict(snap, as_of=1789516800 + 4 * 3600)                                   # the same rounding found one report later
+    again = events.derive(later, prev, [])
+    assert [e["dedupe_key"] for e in again if e["kind"] == "next_mark"] == ["next_mark:12:Lanzarote"]
