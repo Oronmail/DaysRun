@@ -1,8 +1,9 @@
-// site/__tests__/yearlines.test.ts — the pure arithmetic behind the Past races charts: YearLines' axes, its clipping at both
-// edges of the box, and the wind-shares bars' widths (the DOM itself is judged by looking at the chart, not by this file).
+// site/__tests__/yearlines.test.ts — the pure arithmetic behind the Past races charts: YearLines' axes and its clipping at both
+// edges of the box, its gold treatment on the "ended" marker, and the ocean chart's shared graticule labels (the DOM itself is
+// judged by looking at the chart, not by this file).
 import { describe, it, expect } from "vitest";
-import { scale, clip } from "../components/YearLines";
-import { barPct } from "../components/WindShares";
+import { scale, clip, endedStyle } from "../components/YearLines";
+import { latLabel, lonLabel } from "../lib/geo";
 
 describe("a year line's axes", () => {
   it("maps day 0 to the left margin and the top value to the top margin", () => {
@@ -23,12 +24,21 @@ describe("a year line's axes", () => {
   });
 });
 
-describe("the wind-shares bar widths", () => {
-  it("sum to the full bar (100%) for a day with legs", () => {
-    const [up, re, ru] = barPct({ year: "ggr2026", upwind: 14, reaching: 15, running: 71 });
-    expect(up + re + ru).toBe(100);
+describe("the 'ended' marker's gold treatment", () => {
+  it("mirrors the 'end' marker: a gold line moves its ✕ and label to the darker edge/text tokens", () => {
+    expect(endedStyle("#1F6FA3", true)).toEqual({ stroke: "var(--gold-edge)", weight: 600, fill: "var(--gold-text)" });
   });
-  it("are all zero for a day with no legs at all (a blank bar, never a guess)", () => {
-    expect(barPct({ year: "ggr2026", upwind: 0, reaching: 0, running: 0 })).toEqual([0, 0, 0]);
+  it("a non-gold line keeps its own colour for the ✕ and the label", () => {
+    expect(endedStyle("#1F6FA3", false)).toEqual({ stroke: "#1F6FA3", weight: 500, fill: "#1F6FA3" });
+    expect(endedStyle("#1F6FA3")).toEqual({ stroke: "#1F6FA3", weight: 500, fill: "#1F6FA3" });
+  });
+});
+
+describe("the ocean chart's graticule labels (shared by FleetMap and PointsChart)", () => {
+  it("labels a view spanning the equator and the prime meridian correctly on all four sides", () => {
+    expect(latLabel(-34)).toBe("34°S");
+    expect(latLabel(34)).toBe("34°N");
+    expect(lonLabel(18)).toBe("18°E");
+    expect(lonLabel(-18)).toBe("18°W");
   });
 });

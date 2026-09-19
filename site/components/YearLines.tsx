@@ -13,6 +13,11 @@ export function scale(width: number, height: number, xmax: number, ymax: number,
 export function clip(pts: [number, number][], xmax: number): [number, number][] {
   return pts.filter(([x]) => x <= xmax);
 }
+// The ✕ that marks where a race ended gets the same gold treatment as the "still racing" end marker: a gold line's ✕ and
+// label move to the darker edge/text tokens, or a raw pale gold mark would sit unseen on the panel's own pale background.
+export function endedStyle(color: string, gold?: boolean): { stroke: string; weight: number; fill: string } {
+  return gold ? { stroke: "var(--gold-edge)", weight: 600, fill: "var(--gold-text)" } : { stroke: color, weight: 500, fill: color };
+}
 export default function YearLines({ lines, xmax, ymax, yticks, xticks, width = 640, height = 300, R = 64, ylab = (v: number) => Math.round(v).toLocaleString("en-US"), xlab = (x: number) => `d${x}` }:
   { lines: YearLine[]; xmax: number; ymax: number; yticks: number[]; xticks: number[]; width?: number; height?: number; R?: number; ylab?: (v: number) => string; xlab?: (x: number) => string }) {
   const { X, Y, L, pw } = scale(width, height, xmax, ymax, R);
@@ -27,7 +32,7 @@ export default function YearLines({ lines, xmax, ymax, yticks, xticks, width = 6
         {l.gold && <path d={d} fill="none" stroke="var(--gold-edge)" strokeWidth={w + 1.3} strokeLinejoin="round" strokeLinecap="round" strokeDasharray={l.dash ? "5 4" : undefined} />}
         <path d={d} fill="none" stroke={l.color} strokeWidth={w} strokeLinejoin="round" strokeDasharray={l.dash ? "5 4" : undefined} />
         {l.end && <><circle cx={X(ex)} cy={Y(ey)} r={l.gold ? 4.5 : 4} fill={l.color} stroke={l.gold ? "var(--gold-edge)" : "var(--panel)"} strokeWidth={l.gold ? 1.4 : 2} /><text x={X(ex) + 9} y={Y(ey) + 4} fontFamily={MONO} fontSize={10} fontWeight={l.gold ? 600 : 500} fill={l.gold ? "var(--gold-text)" : l.color} className="map-halo">{l.end}</text></>}
-        {l.ended && <><path d={`M${X(ex) - 4},${Y(ey) - 4} L${X(ex) + 4},${Y(ey) + 4} M${X(ex) - 4},${Y(ey) + 4} L${X(ex) + 4},${Y(ey) - 4}`} stroke={l.color} strokeWidth={2.2} /><text x={X(ex) + 8} y={Y(ey) > height - 50 ? Y(ey) - 7 : Y(ey) + 15} fontFamily={MONO} fontSize={10} fill={l.color} className="map-halo">{l.ended}</text></>}
+        {l.ended && (() => { const es = endedStyle(l.color, l.gold); return <><path d={`M${X(ex) - 4},${Y(ey) - 4} L${X(ex) + 4},${Y(ey) + 4} M${X(ex) - 4},${Y(ey) + 4} L${X(ex) + 4},${Y(ey) - 4}`} stroke={es.stroke} strokeWidth={2.2} /><text x={X(ex) + 8} y={Y(ey) > height - 50 ? Y(ey) - 7 : Y(ey) + 15} fontFamily={MONO} fontSize={10} fontWeight={es.weight} fill={es.fill} className="map-halo">{l.ended}</text></>; })()}
       </g>; })}
   </svg>;
 }
