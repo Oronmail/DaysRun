@@ -38,14 +38,16 @@ def fetch(race, name, session=None, timeout=30, attempts=3, backoff=5.0):
             time.sleep(backoff * (attempt + 1))
     raise FetchError(f"{name}: {last}")
 
-def snapshot(race, snapdir, session=None, now=None):
-    """Fetch every endpoint and write <snapdir>/<race>/<name>.<YYYYMMDDTHHMM>.gz. Returns {name: (bytes, path)}."""
+def snapshot(race, snapdir, session=None, now=None, names=None):
+    """Fetch every endpoint and write <snapdir>/<race>/<name>.<YYYYMMDDTHHMM>.gz. Returns {name: (bytes, path)}.
+    names: fetch only these (default all four). The import of a past race asks for the three files it reads and leaves the
+    leaderboard alone — YB served 2018's as a 503 on 18 Sep 2026, and one dead endpoint must not take a whole import down."""
     now = int(now if now is not None else time.time())
     stamp = datetime.fromtimestamp(now, timezone.utc).strftime("%Y%m%dT%H%M")
     d = pathlib.Path(snapdir) / race
     d.mkdir(parents=True, exist_ok=True)
     out = {}
-    for name in ENDPOINTS:
+    for name in (names if names is not None else ENDPOINTS):
         data = fetch(race, name, session=session)
         p = d / f"{name}.{stamp}.gz"
         with gzip.open(p, "wb") as fh:

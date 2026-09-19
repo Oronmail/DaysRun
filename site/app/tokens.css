@@ -5,3 +5,7 @@
   --gain: #4F6E35; --loss: #A8412B; --link: #2C5F7C; --series-1: #1F6FA3; --series-2: #B07F00; --bar: #8A8F96;
   --pencil: #4A5058; --header-bg: #1B1F24; --header-fg: #EDE7D8; --header-muted: #B9B2A1;
 }
+/* Past races: the three race years, newest first, added without touching a token already above. */
+:root {
+  --year-2026: var(--gold); --year-2022: var(--ink); --year-2018: var(--series-1); --gold-edge: var(--gold-text);
+}

@@ -14,7 +14,7 @@ def conn():
     c = db.connect(URL)
     for m in sorted((pathlib.Path(__file__).parents[2] / "db/migrations").glob("*.sql")):     # every migration, in order
         c.execute(m.read_text())
-    c.execute("truncate duel, boat_perf, race, team, fix, leaderboard_snap, split, restart, leg, boat_stat, fleet_stat, record_board, sprint_result, conditions, event cascade")
+    c.execute("truncate edition_wind, edition_milestone, edition_boat_day, edition_day, duel, boat_perf, race, team, fix, leaderboard_snap, split, restart, leg, boat_stat, fleet_stat, record_board, sprint_result, conditions, event cascade")
     c.commit()
     yield c
     c.close()
@@ -119,6 +119,91 @@ def test_a_zegments_tag_without_teams_is_skipped(conn):
     db.upsert_splits(conn, "ggr2026", zeg)
     conn.commit()
     assert conn.execute("select count(*) from split where race_key='ggr2026'").fetchone()[0] == before
+def test_load_splits_gives_back_the_passages_a_real_boat_made_and_nothing_else(conn):
+    """The path the page's gates really read (editions.crossings ← db.load_splits ← the `split` table), and three of its rules had
+    no test at all. A row with no stop time is not a passage. A row YB gave no checkpoint index cannot be named against another
+    race's gate and is skipped. And a GHOST — a replay of an earlier race on this year's course — is left out here: YB PREDICTS a
+    ghost's remaining stops, and this year's zegments, taken at 15 Sep 21:58 UTC, already carries index-620 rows for the three of
+    them stopping on 17, 19 and 21 September. db.team_ends' ghost filter keeps them off the page today, two modules away; a
+    prediction must be refused where the rows are read."""
+    from ggrstats import db
+    setup = json.load(open(FIX / "RaceSetup.20260916.json"))
+    db.upsert_race(conn, "ggr2026", setup); db.upsert_teams(conn, "ggr2026", setup)
+    db.upsert_splits(conn, "ggr2026", json.load(open(FIX / "zegments.20260915T2159.json")))
+    conn.commit()
+    ghosts = [t for t, in conn.execute("select id from team where race_key='ggr2026' and is_ghost")]
+    assert {940, 957, 978} <= set(ghosts)
+    predicted = [t for t, in conn.execute("""select team_id from split where race_key='ggr2026' and checkpoint_index=620
+                                             and stop_at > '2026-09-15T21:58:32Z'""")]
+    assert sorted(predicted) == [940, 957, 978]                               # three stops YB has not seen happen
+    got = db.load_splits(conn, "ggr2026")
+    assert not set(got) & set(ghosts), got                                    # not one predicted passage comes back
+    assert got[6] == {300: 1788992765}                                        # a real boat's own completed segment, to the second
+    conn.execute("""insert into split values ('ggr2026', 6, 9001, 'no stop yet', 620, null, null, null, null, null),
+                                             ('ggr2026', 6, 9002, 'no index',   null, null, '2026-09-14T10:00:00Z', null, null, null)""")
+    conn.commit()
+    assert db.load_splits(conn, "ggr2026")[6] == {300: 1788992765}            # neither row is a passage: blank, never guessed
+
+def test_past_teams_and_edition_tables_roundtrip(conn):
+    from ggrstats import db
+    setup = {"title": "Golden Globe Race 2018", "course": {"distance": 46484.9, "nodes": []},
+             "tags": [], "teams": [{"id": 8, "name": "Jean-Luc Van Den Heede", "start": 1530439200}]}
+    from ggrstats import config
+    assert config.race_start(setup) == 1530439200            # 2018's RaceSetup has no start on its tags: the earliest boat's
+    db.upsert_race(conn, "ggr2018", setup)
+    db.upsert_past_teams(conn, "ggr2018", [{"id": 8, "name": "Jean-Luc Van Den Heede", "first_name": None, "model": "Rustler 36", "yacht": "Matmut",
+        "design_class": "Rustler 36", "status": "finished", "start_at": 1530439200, "ended_at": 1548753120, "ended_how": "finished",
+        "ended_where": "Les Sables-d’Olonne", "class_note": None, "source": "https://goldengloberace.com/"}])
+    db.replace_edition_boat_days(conn, "ggr2018", [{"team_id": 8, "race_day": 12, "as_of": 1531440000, "racing": True, "finished": False, "fresh": True,
+        "fix_at": 1531440001, "lat": 27.9, "lon": -14.7, "position_text": "27°54.0′N 014°42.0′W", "togo_nm": 24380.0, "mg_nm": 1374.5, "sailed_nm": 1470.0, "run24_nm": 153.0,
+        "best24_nm": 163.0, "best24_at": 1531440000, "place": 2}])
+    db.replace_edition_days(conn, "ggr2018", [{"race_day": 12, "as_of": 1531440000, "racing": 16, "finished": 0, "fresh": 16, "leader_team_id": 85,
+        "leader_mg_nm": 1388.0, "median_mg_nm": 1210.0, "last_mg_nm": 1014.0, "best_run_nm": 163.0, "best_run_team_id": 85,
+        "best_sofar_nm": 172.0, "best_sofar_team_id": 85, "best_sofar_at": 1530600000, "mean_run_nm": 137.0, "runs_n": 15,
+        "wind_kt": 10.9, "wind_legs": 90, "legs_upwind": 22, "legs_reaching": 16, "legs_running": 52, "straight_pct": 105.0}])
+    db.replace_edition_milestones(conn, "ggr2018", [{"team_id": 8, "milestone": "Cape Horn", "passed_at": 1543005600, "race_day": 145}])
+    conn.commit()
+    ends = db.team_ends(conn, "ggr2018")
+    assert ends[8] == {"ended_at": 1548753120, "ended_how": "finished"}
+    assert conn.execute("select mg_nm from edition_boat_day where race_key='ggr2018' and team_id=8 and race_day=12").fetchone()[0] == 1374.5
+    assert conn.execute("select position_text from edition_boat_day where race_key='ggr2018' and team_id=8 and race_day=12").fetchone()[0] == "27°54.0′N 014°42.0′W"
+    assert conn.execute("select round(best24_nm), extract(epoch from best24_at)::bigint from edition_boat_day where race_key='ggr2018' and team_id=8 and race_day=12").fetchone() == (163, 1531440000)
+    assert conn.execute("select median_mg_nm from edition_day where race_key='ggr2018' and race_day=12").fetchone()[0] == 1210.0
+    assert conn.execute("select best_sofar_team_id, extract(epoch from best_sofar_at)::bigint from edition_day where race_key='ggr2018' and race_day=12").fetchone() == (85, 1530600000)
+    assert conn.execute("select best_sofar_nm from edition_day where race_key='ggr2018' and race_day=12").fetchone()[0] == 172.0
+    assert conn.execute("select race_day from edition_milestone where race_key='ggr2018' and team_id=8").fetchone()[0] == 145
+    db.replace_edition_days(conn, "ggr2018", [{"race_day": 12, "as_of": 1531440000, "racing": 16, "finished": 0, "fresh": 15, "leader_team_id": 85,
+        "leader_mg_nm": 1388.0, "median_mg_nm": 1211.0, "last_mg_nm": 1014.0, "best_run_nm": 163.0, "best_run_team_id": 85, "mean_run_nm": 137.0, "runs_n": 15,
+        "wind_kt": None, "wind_legs": 0, "legs_upwind": 0, "legs_reaching": 0, "legs_running": 0, "straight_pct": None}])
+    conn.commit()
+    assert conn.execute("select count(*), max(median_mg_nm) from edition_day where race_key='ggr2018'").fetchone() == (1, 1211.0)   # replaced, not duplicated
+    assert conn.execute("select best_sofar_nm from edition_day where race_key='ggr2018' and race_day=12").fetchone()[0] is None     # this call omitted it: NULL, not stale
+
+def test_replace_with_empty_rows_touches_nothing(conn):
+    """A day with nothing to write must delete nothing: replace_edition_days/replace_edition_boat_days with an empty
+    list must leave every day already stored alone. Milestones are the whole-race table (day_col=None): there an
+    empty list IS the new state, so a race with no milestones left ends with none."""
+    from ggrstats import db
+    db.upsert_race(conn, "ggr2018", {"title": "Golden Globe Race 2018", "course": {"distance": 46484.9}, "tags": [{"start": 1530439200}], "teams": []})
+    db.upsert_past_teams(conn, "ggr2018", [{"id": 8, "name": "Jean-Luc Van Den Heede", "first_name": None, "model": "Rustler 36", "yacht": "Matmut",
+        "design_class": "Rustler 36", "status": "racing", "start_at": 1530439200, "ended_at": None, "ended_how": None,
+        "ended_where": None, "class_note": None, "source": "https://goldengloberace.com/"}])
+    day = lambda d: {"race_day": d, "as_of": 1531440000 + d, "racing": 16, "finished": 0, "fresh": 16, "leader_team_id": 8,
+        "leader_mg_nm": 1000.0, "median_mg_nm": 900.0, "last_mg_nm": 800.0, "best_run_nm": 150.0, "best_run_team_id": 8,
+        "mean_run_nm": 130.0, "runs_n": 15, "wind_kt": 10.0, "wind_legs": 90, "legs_upwind": 20, "legs_reaching": 20, "legs_running": 50, "straight_pct": 105.0}
+    boat_day = lambda d: {"team_id": 8, "race_day": d, "as_of": 1531440000 + d, "racing": True, "finished": False, "fresh": True,
+        "fix_at": 1531440001 + d, "lat": 27.9, "lon": -14.7, "togo_nm": 24000.0, "mg_nm": 1300.0, "sailed_nm": 1400.0, "run24_nm": 150.0, "place": 2}
+    db.replace_edition_days(conn, "ggr2018", [day(11), day(12)])
+    db.replace_edition_boat_days(conn, "ggr2018", [boat_day(11), boat_day(12)])
+    db.replace_edition_milestones(conn, "ggr2018", [{"team_id": 8, "milestone": "Lanzarote", "passed_at": 1530439300, "race_day": 1}])
+    conn.commit()
+    db.replace_edition_days(conn, "ggr2018", [])
+    db.replace_edition_boat_days(conn, "ggr2018", [])
+    db.replace_edition_milestones(conn, "ggr2018", [])
+    conn.commit()
+    assert conn.execute("select count(*) from edition_day where race_key='ggr2018'").fetchone()[0] == 2        # untouched
+    assert conn.execute("select count(*) from edition_boat_day where race_key='ggr2018'").fetchone()[0] == 2   # untouched
+    assert conn.execute("select count(*) from edition_milestone where race_key='ggr2018'").fetchone()[0] == 0  # the new (empty) whole-race state
 
 
 def test_the_class_comes_from_ybs_own_tag_and_the_override_only_stands_in_until_it_does():

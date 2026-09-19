@@ -35,6 +35,14 @@ def test_snapshot_writes_gzipped_files(tmp_path):
     assert path.name == "AllPositions3.20260916T0000.gz"
     assert gzip.open(path).read() == b"\x02\x00\x00\x00\x00"
 
+def test_snapshot_can_be_asked_for_a_few_endpoints_only(tmp_path):
+    """The import of a past race needs RaceSetup, zegments and the track, never the leaderboard — which YB served as a 503 for
+    2018 on the morning of 18 Sep 2026, and would have taken the whole import down with it."""
+    s = FakeSession()
+    out = yb.snapshot("ggr2018", tmp_path, session=s, now=1530439200, names=("RaceSetup", "zegments", "AllPositions3"))
+    assert set(out) == {"RaceSetup", "zegments", "AllPositions3"}
+    assert not any(url.endswith("leaderboard") for url in s.calls)
+
 def test_fetch_raises_after_both_hosts_fail():
     class Dead(FakeSession):
         def get(self, url, timeout=None, headers=None):

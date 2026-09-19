@@ -5,6 +5,11 @@ export type View = { lon0: number; lon1: number; lat0: number; lat1: number; wid
 const k = (v: View) => v.width / ((v.lon1 - v.lon0) * Math.cos(((v.lat0 + v.lat1) / 2) * Math.PI / 180));
 const kc = (v: View) => Math.cos(((v.lat0 + v.lat1) / 2) * Math.PI / 180);
 export const viewHeight = (v: View) => (v.lat1 - v.lat0) * k(v);
+// The graticule's own labels: south/west read negative in the view's plain numbers, so every chart of the ocean formats
+// them the same way rather than each writing its own — this course runs to 56°S and round through 180° of longitude,
+// where a per-component "-34°N" or "-18°W" would be a bug, not a style choice.
+export const latLabel = (la: number) => `${Math.abs(la)}°${la < 0 ? "S" : "N"}`;
+export const lonLabel = (lo: number) => `${Math.abs(lo)}°${lo < 0 ? "W" : "E"}`;
 export function project(lat: number, lon: number, v: View): [number, number] {
   return [(lon - v.lon0) * kc(v) * k(v), (v.lat1 - lat) * k(v)];
 }

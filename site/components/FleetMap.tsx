@@ -1,5 +1,5 @@
 // site/components/FleetMap.tsx — server-rendered SVG chart in the Admiralty-paper style
-import { project, viewHeight, landPaths, courseD, type View } from "@/lib/geo";
+import { project, viewHeight, landPaths, courseD, latLabel, lonLabel, type View } from "@/lib/geo";
 import { marksInView, markNamed, edgePointer } from "@/lib/marks";
 import Tips, { type Target } from "./Tips";
 import type { Tip } from "@/lib/tips";
@@ -10,8 +10,8 @@ export type Marker = { lat: number; lon: number; label?: string; side?: "l" | "r
 export default function FleetMap({ view, course, markers, track, note, next, open = "left" }: { open?: "left" | "right"; view: View; course: { lat: number; lon: number }[]; markers: Marker[]; track?: { lat: number; lon: number }[]; note?: { lat: number; lon: number; lines: string[] }; next?: { name: string; from: { lat: number; lon: number }; text: string } }) {
   const H = viewHeight(view), W = view.width;
   const grid: React.ReactNode[] = [];
-  for (let lo = Math.ceil(view.lon0 / 5) * 5; lo <= view.lon1; lo += 5) { const [x] = project(view.lat0, lo, view); grid.push(<g key={`lo${lo}`}><line x1={x} y1={0} x2={x} y2={H} stroke="var(--hair)" strokeWidth={0.6} /><text x={x + 34 < W ? x + 3 : x - 3} y={H - 5} textAnchor={x + 34 < W ? "start" : "end"} fontFamily="var(--font-mono)" fontSize={9} fill="var(--graphite)">{Math.abs(lo)}°{lo < 0 ? "W" : "E"}</text></g>); }
-  for (let la = Math.ceil(view.lat0 / 5) * 5; la <= view.lat1; la += 5) { const [, y] = project(la, view.lon0, view); grid.push(<g key={`la${la}`}><line x1={0} y1={y} x2={W} y2={y} stroke="var(--hair)" strokeWidth={0.6} /><text x={4} y={y - 3} fontFamily="var(--font-mono)" fontSize={9} fill="var(--graphite)">{Math.abs(la)}°{la < 0 ? "S" : "N"}</text></g>); }
+  for (let lo = Math.ceil(view.lon0 / 5) * 5; lo <= view.lon1; lo += 5) { const [x] = project(view.lat0, lo, view); grid.push(<g key={`lo${lo}`}><line x1={x} y1={0} x2={x} y2={H} stroke="var(--hair)" strokeWidth={0.6} /><text x={x + 34 < W ? x + 3 : x - 3} y={H - 5} textAnchor={x + 34 < W ? "start" : "end"} fontFamily="var(--font-mono)" fontSize={9} fill="var(--graphite)">{lonLabel(lo)}</text></g>); }
+  for (let la = Math.ceil(view.lat0 / 5) * 5; la <= view.lat1; la += 5) { const [, y] = project(la, view.lon0, view); grid.push(<g key={`la${la}`}><line x1={0} y1={y} x2={W} y2={y} stroke="var(--hair)" strokeWidth={0.6} /><text x={4} y={y - 3} fontFamily="var(--font-mono)" fontSize={9} fill="var(--graphite)">{latLabel(la)}</text></g>); }
   const all: Marker[] = [...markers, ...marksInView(view).map(m => ({ lat: m.lat, lon: m.lon, kind: "mark" as const, label: m.name }))];
   const target = next ? markNamed(next.name) : null;
   const ptr = next && target ? edgePointer(project(next.from.lat, next.from.lon, view), project(target.lat, target.lon, view), W, H, 16) : null;

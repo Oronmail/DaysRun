@@ -16,6 +16,8 @@ export const PAGES: Record<string, Words> = {
     description: `A page for every skipper of the ${RACE}: track, average speed on each 4-hour leg, daily runs, place day by day, ghosts. Unofficial statistics.` },
   "/ghosts": { title: `Ghost race against past voyages · ${SITE_NAME}`,
     description: `The fleet of the ${RACE} against the replayed voyages of Van Den Heede (2018), Neuschäfer (2022), Knox-Johnston and Moitessier (1968–69). Unofficial.` },
+  "/past-races": { title: `Past races: 2026 against 2018 and 2022 · unofficial · ${SITE_NAME}`,
+    description: `The whole fleet of the ${RACE} against the fleets of 2018 and 2022, race day for race day: miles made good, the wind, where they sailed. Unofficial.` },
   "/records": { title: `Records: best 4-hour leg, 24-hour and 7-day runs · ${SITE_NAME}`,
     description: `The record boards of the ${RACE}: best 4-hour leg, best 24-hour run, best 7-day run, and the personal bests of every skipper. Unofficial statistics.` },
   "/records/7d": { title: `Records of the last 7 days · ${SITE_NAME}`,

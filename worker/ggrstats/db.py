@@ -15,8 +15,10 @@ def connect(url=None):
     return psycopg.connect(url or config.DATABASE_URL, connect_timeout=20,
                            keepalives=1, keepalives_idle=20, keepalives_interval=5, keepalives_count=3)
 
-def upsert_race(conn, key, setup):
-    start = config.race_start(setup)
+def upsert_race(conn, key, setup, start_at=None):
+    """The raw setup is stored exactly as received. The start written is start_at when given — a past race's gun, which is a
+    curated fact (editions_data), not YB's to change — else config.race_start(setup) for the race being sailed."""
+    start = start_at if start_at is not None else config.race_start(setup)
     conn.execute("""insert into race (key, title, start_at, course_km, raw_setup, updated_at)
                     values (%s, %s, %s, %s, %s, now())
                     on conflict (key) do update set title=excluded.title, start_at=excluded.start_at,
@@ -99,6 +101,29 @@ def upsert_splits(conn, key, zeg):
     conn.cursor().executemany("""insert into split values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     on conflict (race_key, team_id, checkpoint_id) do update set stop_at=excluded.stop_at,
                     duration_s=excluded.duration_s, delta_best_s=excluded.delta_best_s, delta_preceding_s=excluded.delta_preceding_s""", rows)
+
+def load_splits(conn, key):
+    """{team_id: {checkpoint index: the time YB timed the boat through that checkpoint}} — the race's OWN record of its own gates,
+    which is what a gate milestone reads (editions.crossings).
+
+    THE INDEX, NEVER THE CHECKPOINT ID. Both come from YB's zegments file. The id is numbered per race, so 2022's Hobart gate and
+    2018's carry different ids; the index is YB's own checkpoint number, carried in the checkpoint's name (`GGR26_620_…`,
+    `Golden Globe Race 2022_620_…`) and THE SAME NUMBER FOR THE SAME GATE IN ALL THREE RACES — 620 off Lanzarote, 2411 at Hobart,
+    4200 at Cape Horn, 5500 at the finish. It is NOT an index into `RaceSetup.course.nodes`, which hold 511 (2026), 527 (2022) and
+    500 (2018) nodes: every gate index above 500 is out of range of every course, and nothing may be looked up by it there.
+
+    A row without a stop time is not a passage and is left out: blank, never guessed. A GHOST is left out too — a ghost is a
+    replay of an earlier race on this year's course, and YB PREDICTS its remaining stops: this year's zegments, taken at
+    15 Sep 21:58 UTC, already carries index-620 rows for the three ghosts stopping on 17, 19 and 21 September. Nothing that has
+    not happened may reach the page, and this is where it is refused, not two modules away. A split whose boat has no team row at
+    all is kept (the row cannot be a ghost's if there is no ghost to be)."""
+    out = {}
+    for tid, idx, at in conn.execute("""select s.team_id, s.checkpoint_index, extract(epoch from s.stop_at)::bigint from split s
+                                        left join team t on t.race_key = s.race_key and t.id = s.team_id
+                                        where s.race_key=%s and s.checkpoint_index is not null and s.stop_at is not null
+                                          and not coalesce(t.is_ghost, false)""", (key,)):
+        out.setdefault(tid, {})[idx] = int(at)
+    return out
 
 def _dur_s(text):
     """'1d 6h 18m 42s' -> seconds."""
@@ -216,3 +241,65 @@ def previous_boat_stats(conn, key, before_as_of):
     if not prev: return []
     cols = ["team_id", "rank", "run24_nm", "best24_nm", "best4_kn", "best7_nm", "stale", "next_mark", "fleet_best24", "pb24", "restart_at", "dtf_nm"]
     return [dict(zip(cols, r), as_of_s=int(prev.timestamp())) for r in conn.execute(f"select {', '.join(cols)} from boat_stat where race_key=%s and as_of=%s", (key, prev))]
+
+
+def upsert_past_teams(conn, key, rows):
+    """The curated table of a past race's boats (editions_data): names as they should be spelled, yachts, designs, and how each race ended."""
+    conn.cursor().executemany("""insert into team (race_key, id, name, first_name, model, yacht, design_class, is_ghost, status, start_at,
+                    ended_at, ended_how, ended_where, class_note, source)
+                    values (%(key)s, %(id)s, %(name)s, %(first_name)s, %(model)s, %(yacht)s, %(design_class)s, false, %(status)s, %(start_at)s,
+                    %(ended_at)s, %(ended_how)s, %(ended_where)s, %(class_note)s, %(source)s)
+                    on conflict (race_key, id) do update set name=excluded.name, first_name=excluded.first_name, model=excluded.model, yacht=excluded.yacht,
+                    design_class=excluded.design_class, status=excluded.status, start_at=excluded.start_at, ended_at=excluded.ended_at, ended_how=excluded.ended_how,
+                    ended_where=excluded.ended_where, class_note=excluded.class_note, source=excluded.source""",
+                 [dict(r, key=key, start_at=ts(r["start_at"]), ended_at=ts(r.get("ended_at"))) for r in rows])
+
+def team_ends(conn, key):
+    return {tid: {"ended_at": int(e) if e is not None else None, "ended_how": how}
+            for tid, e, how in conn.execute("select id, extract(epoch from ended_at)::bigint, ended_how from team where race_key=%s and not is_ghost", (key,))}
+
+def _replace(conn, table, key, rows, cols, day_col="race_day"):
+    """Delete the race's rows for the given days and insert the new ones. day_col is None (milestones): the whole
+    race's table is the unit of replacement, so an empty rows list IS the new (empty) state. day_col set (the day
+    tables): only the days present in rows are touched, so an empty rows list means nothing to write and the call
+    returns without touching a single row already stored for a different day. Every column is read with r.get(c):
+    a caller that does not yet supply a newer column (best24_at, best_sofar_nm, …) leaves it NULL."""
+    if day_col is not None and not rows:
+        return
+    with conn.pipeline(), conn.cursor() as cur:
+        if day_col is None:
+            cur.execute(f"delete from {table} where race_key=%s", (key,))
+        else:
+            days = sorted({r[day_col] for r in rows})
+            cur.execute(f"delete from {table} where race_key=%s and {day_col} = any(%s)", (key, days))
+        if rows:
+            cur.executemany(f"insert into {table} (race_key, {', '.join(cols)}) values (%s, {', '.join(['%s'] * len(cols))})",
+                            [(key, *[ts(r.get(c)) if c in ("as_of", "fix_at", "passed_at", "slot_at", "best24_at", "best_sofar_at") else r.get(c)
+                                     for c in cols]) for r in rows])
+
+DAY_COLS = ("race_day", "as_of", "racing", "finished", "fresh", "leader_team_id", "leader_mg_nm", "median_mg_nm", "last_mg_nm", "best_run_nm", "best_run_team_id",
+            "best_sofar_nm", "best_sofar_team_id", "best_sofar_at", "mean_run_nm", "runs_n", "wind_kt", "wind_legs", "legs_upwind", "legs_reaching", "legs_running", "straight_pct")
+BOAT_DAY_COLS = ("team_id", "race_day", "as_of", "racing", "finished", "fresh", "fix_at", "lat", "lon", "position_text", "togo_nm", "mg_nm", "sailed_nm", "run24_nm",
+                 "best24_nm", "best24_at", "place")
+MILESTONE_COLS = ("team_id", "milestone", "passed_at", "race_day")
+
+def replace_edition_days(conn, key, rows): _replace(conn, "edition_day", key, rows, DAY_COLS)
+def replace_edition_boat_days(conn, key, rows): _replace(conn, "edition_boat_day", key, rows, BOAT_DAY_COLS)
+def replace_edition_milestones(conn, key, rows): _replace(conn, "edition_milestone", key, rows, MILESTONE_COLS, day_col=None)
+
+def insert_edition_wind(conn, key, rows):
+    """rows: {team_id, slot_at, wind_kt, wind_dir_deg, model}; a slot already stored is left alone."""
+    conn.cursor().executemany("insert into edition_wind (race_key, team_id, slot_at, wind_kt, wind_dir_deg, model) values (%s,%s,%s,%s,%s,%s) on conflict do nothing",
+                              [(key, r["team_id"], ts(r["slot_at"]), r["wind_kt"], r["wind_dir_deg"], r["model"]) for r in rows])
+
+def load_edition_wind(conn, key):
+    """{team_id: {slot time: (kt, direction the wind blows FROM)}}, the shape perf.wind_stats and editions.wind_day read."""
+    out = {}
+    for tid, at, w, d in conn.execute("select team_id, extract(epoch from slot_at)::bigint, wind_kt, wind_dir_deg from edition_wind where race_key=%s", (key,)):
+        out.setdefault(tid, {})[int(at)] = (w, d)
+    return out
+
+def missing_edition_wind_slots(conn, key, slots_by_team):
+    """slots_by_team: {team_id: [slot time, …]}; returns the (team_id, slot) pairs with no edition_wind row yet."""
+    have = {(tid, int(at)) for tid, at in conn.execute("select team_id, extract(epoch from slot_at)::bigint from edition_wind where race_key=%s", (key,))}
+    return [(tid, s) for tid, ss in slots_by_team.items() for s in ss if (tid, s) not in have]

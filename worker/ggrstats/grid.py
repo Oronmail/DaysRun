@@ -23,12 +23,18 @@ def slot_of(at):
 def slot_time(k):
     return k * SLOT_S
 
-def resample(fixes, start_at):
+def resample(fixes, start_at, keep_without_dtf=False):
     """{slot_index: fix}: per 4-hour boundary, the fix NEAREST the boundary within ±20 min.
-    Fixes before start_at, and fixes with dtf 0 (in-port tracker noise on the first days), are dropped."""
+    Fixes before start_at, and fixes with dtf 0 (in-port tracker noise on the first days), are dropped.
+
+    keep_without_dtf: keep the second kind. Only the PAST-races path passes it (editions.prepare's `fill`), and only because
+    YB's record of a past race can stop giving a distance while the boat is plainly still sailing — it gives Mark Slats none for
+    the last month of 2018, mid-Atlantic. The position of such a fix is YB's and is true, so the boat keeps her legs, her runs
+    and her miles sailed; everything counted off a distance stays blank (editions.boat_day). This year's fleet never passes it:
+    its figures must equal YB's own, and a fix of 2026 without a distance really is a tracker on a quay."""
     out = {}
     for f in sorted(fixes, key=lambda f: f["at"]):
-        if f["at"] < start_at or not f.get("dtf"):
+        if f["at"] < start_at or (not keep_without_dtf and not f.get("dtf")):
             continue
         k = slot_of(f["at"])
         off = abs(f["at"] - slot_time(k))
@@ -37,10 +43,13 @@ def resample(fixes, start_at):
     return out
 
 def _stats(first, last, dist):
+    # Distance sailed, speed and course made good are positions and are always there. Miles made good and VMG are read off the
+    # distance to finish, so an end without one leaves both blank rather than nought: a window whose ends YB never measured has
+    # no made-good at all (resample keeps such a fix only for a past fleet, see above).
+    mg = (first["dtf"] - last["dtf"]) / 1852.0 if first.get("dtf") and last.get("dtf") else None
     hours = (last["at"] - first["at"]) / 3600.0
-    mg = (first["dtf"] - last["dtf"]) / 1852.0
     return {"start_at": first["at"], "end_at": last["at"], "hours": hours, "dist_nm": dist, "made_good_nm": mg,
-            "speed_kn": dist / hours if hours > 0 else 0.0, "vmg_kn": mg / hours if hours > 0 else 0.0,
+            "speed_kn": dist / hours if hours > 0 else 0.0, "vmg_kn": (mg / hours if hours > 0 else 0.0) if mg is not None else None,
             "cmg_deg": bearing_deg(first["lat"], first["lon"], last["lat"], last["lon"])}
 
 def window(slots, k_end, n_slots, t0=0, strict=False):
