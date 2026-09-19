@@ -2,7 +2,7 @@
 // edges of the box, its gold treatment on the "ended" marker, and the ocean chart's shared graticule labels (the DOM itself is
 // judged by looking at the chart, not by this file).
 import { describe, it, expect } from "vitest";
-import { scale, clip, endedStyle, endedLabelY } from "../components/YearLines";
+import { scale, clip, endedStyle, endedLabelY, spreadLabels } from "../components/YearLines";
 import { latLabel, lonLabel } from "../lib/geo";
 
 describe("a year line's axes", () => {
@@ -62,5 +62,35 @@ describe("where an ended ✕ puts its label", () => {
   it("goes above the ✕ near the foot of the chart, and further above it when a label is there too", () => {
     expect(endedLabelY(200, 190, 210, [])).toBe(183);
     expect(endedLabelY(200, 190, 210, [[200, 190]])).toBe(170);
+  });
+});
+
+describe("end labels that would print on top of each other", () => {
+  it("spreads two labels three pixels apart to the full gap, centred on where they were", () => {
+    expect(spreadLabels([100, 103], 12, 0, 300)).toEqual([95.5, 107.5]);
+  });
+  it("spreads three close labels, keeping their order and their middle", () => {
+    const out = spreadLabels([100, 105, 110], 12, 0, 300);
+    expect(out).toEqual([93, 105, 117]);
+    expect(out[1] - out[0]).toBeGreaterThanOrEqual(12); expect(out[2] - out[1]).toBeGreaterThanOrEqual(12);
+  });
+  it("leaves labels that are already clear of each other exactly where they are", () => {
+    expect(spreadLabels([40, 100, 240], 12, 0, 300)).toEqual([40, 100, 240]);
+  });
+  it("keeps the order of the lines, whatever order they are given in", () => {
+    const out = spreadLabels([103, 100], 12, 0, 300);          // the lower line first
+    expect(out[0]).toBeGreaterThan(out[1]);
+    expect(out).toEqual([107.5, 95.5]);
+  });
+  it("never puts a label outside the chart's box", () => {
+    expect(spreadLabels([2, 4], 12, 0, 300)).toEqual([0, 12]);            // pushed down off the top edge
+    expect(spreadLabels([298, 296], 12, 0, 300)).toEqual([300, 288]);     // and up off the bottom
+    const tight = spreadLabels([5, 6, 7], 12, 0, 20);                     // more labels than the box can hold at the full gap
+    expect(Math.min(...tight)).toBeGreaterThanOrEqual(0); expect(Math.max(...tight)).toBeLessThanOrEqual(20);
+    expect(tight[1] - tight[0]).toBeCloseTo(10); expect(tight[2] - tight[1]).toBeCloseTo(10);
+  });
+  it("spreads nothing when there is one label, or none", () => {
+    expect(spreadLabels([120], 12, 0, 300)).toEqual([120]);
+    expect(spreadLabels([], 12, 0, 300)).toEqual([]);
   });
 });
