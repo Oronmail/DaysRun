@@ -3,7 +3,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { YEARS, YEAR_LABEL, latestDay, sameDay, series, toPass, pointTip, windShares, takeaways, raceDayLabel, milestonesAsOf, bestSoFar, COURSE_NM, shareOfCourse, fleetWind, fraction, windWords, latDM, roadRow, roadWords, boatSeries, attemptCard, milestoneCells, sevenDayMean, START_AT, startWords, RETURNING, VETERAN_HULLS, MILESTONE_ORDER } from "../lib/editions";
+import { YEARS, YEAR_LABEL, latestDay, sameDay, series, toPass, pointTip, windShares, takeaways, raceDayLabel, milestonesAsOf, bestSoFar, COURSE_NM, shareOfCourse, fleetWind, fraction, windWords, latDM, roadRow, roadWords, boatSeries, attemptCard, milestoneCells, sevenDayMean, START_AT, startWords, RULE, raceDayOf, figuresLine, axisMax, SHARED_WATER_NM, spanWords, thinnestRunDay, methodWords, cautionWords, runsNote, RETURNING, VETERAN_HULLS, MILESTONE_ORDER } from "../lib/editions";
 import type { EditionDay, EditionBoatDay, EditionMilestone } from "../lib/db";
 
 const day = (race_key: string, race_day: number, o: Partial<EditionDay> = {}): EditionDay => ({
@@ -74,9 +74,9 @@ describe("bestSoFar", () => {
 describe("words", () => {
   it("says how far a returning skipper is from where the earlier race ended, or that the point is passed", () => {
     // Each figure is miles made good on its OWN race's course, so the difference names no course at all.
-    expect(toPass(1519, 7008)).toBe("about 5,500 nm to go to where that race ended");
-    expect(toPass(1203, 1299)).toBe("about 100 nm to go to where that race ended");
-    expect(toPass(1400, 1299)).toBe("past that point");
+    expect(toPass(1519, 7008)).toBe("About 5,500 nm to go to where that race ended");
+    expect(toPass(1203, 1299)).toBe("About 100 nm to go to where that race ended");
+    expect(toPass(1400, 1299)).toBe("Past that point");
   });
   it("labels a race day with its date", () => {
     expect(raceDayLabel(12, "2026-09-18T00:00:00+00:00")).toBe("day 12 · 18 Sep");
@@ -109,10 +109,15 @@ describe("words", () => {
     expect(tip.lines).toEqual(["PRB · Rustler 36", "no position", "missed the 00:00 report: last position shown"]);
   });
   it("turns a day's legs into shares that add to 100", () => {
-    expect(windShares(day("ggr2026", 12))).toEqual({ upwind: 14, reaching: 15, running: 71 });
+    expect(windShares(day("ggr2026", 12))).toEqual({ upwind: 15, reaching: 14, running: 71 });   // 14.44 / 14.44 / 71.11: the spare point to the first of the two largest remainders
   });
   it("rounds awkward thirds so the shares still add to 100", () => {
-    expect(windShares(day("ggr2026", 12, { legs_upwind: 1, legs_reaching: 1, legs_running: 1 }))).toEqual({ upwind: 33, reaching: 34, running: 33 });
+    expect(windShares(day("ggr2026", 12, { legs_upwind: 1, legs_reaching: 1, legs_running: 1 }))).toEqual({ upwind: 34, reaching: 33, running: 33 });
+  });
+  it("gives the spare point to the largest remainder, not always to the middle band", () => {
+    // 14.72 / 17.69 / 67.59 of the legs: the old rule printed 15 / 17 / 68 (the middle made up the remainder); 17.69 has the
+    // largest remainder after 14.72, so the two spare points belong to reaching and upwind.
+    expect(windShares({ legs_upwind: 1472, legs_reaching: 1769, legs_running: 6759 })).toEqual({ upwind: 15, reaching: 18, running: 67 });
   });
   it("is all zero when the day has no legs to share, never a division by zero", () => {
     expect(windShares(day("ggr2026", 1, { legs_upwind: 0, legs_reaching: 0, legs_running: 0 }))).toEqual({ upwind: 0, reaching: 0, running: 0 });
@@ -270,17 +275,17 @@ describe("one boat's line", () => {
 });
 
 describe("a second attempt's card", () => {
-  const team = { ended_how: "retired", ended_where: "Cape Town", ended_at: "2022-11-14T12:00:00+00:00" };
+  const team = { ended_how: "retired", ended_where: "Cape Town", ended_at: "2022-11-14T12:00:00+00:00" };   // race day 71 of 2022
   const past = [bd("ggr2022", 12, { mg_nm: 575 }), bd("ggr2022", 70, { mg_nm: 7157.9 }), bd("ggr2022", 71, { mg_nm: 7096.4 }), bd("ggr2022", 72, { racing: false, fresh: false, mg_nm: null })];
-  it("sets today against the same race day of the earlier race, and says how far to where that race ended", () => {
-    const c = attemptCard([bd("ggr2026", 12, { mg_nm: 1518.9 })], past, team, 12);
+  it("sets this year against the same race day of the earlier race, and says how far to where that race ended", () => {
+    const c = attemptCard([bd("ggr2026", 12, { mg_nm: 1518.9 })], past, team, 12, "ggr2022");
     expect(c.diff).toBe(944); expect(c.endDay).toBe(71); expect(Math.round(c.endMg!)).toBe(7158);
     expect(c.endText).toBe("retired at Cape Town, day 71");
-    expect(c.pass).toBe("about 5,600 nm to go to where that race ended");
+    expect(c.pass).toBe("");                                        // Cape Town is far beyond the water the three fleets share
   });
   it("leaves the difference blank when one of the two days has no distance, rather than counting the blank as nought", () => {
-    expect(attemptCard([bd("ggr2026", 12, { mg_nm: null })], past, team, 12).diff).toBeNull();
-    expect(attemptCard([bd("ggr2026", 12, { mg_nm: 1518.9 })], [bd("ggr2022", 70, { mg_nm: 7157.9 })], team, 12).diff).toBeNull();
+    expect(attemptCard([bd("ggr2026", 12, { mg_nm: null })], past, team, 12, "ggr2022").diff).toBeNull();
+    expect(attemptCard([bd("ggr2026", 12, { mg_nm: 1518.9 })], [bd("ggr2022", 70, { mg_nm: 7157.9 })], team, 12, "ggr2022").diff).toBeNull();
   });
 });
 
@@ -291,16 +296,27 @@ describe("a milestone's three cells", () => {
     { race_key: "ggr2022", team_id: 4, milestone: "Lanzarote", passed_at: "2022-09-18T04:00:00+00:00", race_day: 14 },
     { race_key: "ggr2018", team_id: 8, milestone: "Equator", passed_at: "2018-07-27T00:00:00+00:00", race_day: 26 },
   ];
-  it("names the first boat through, the passing of the middle of the fleet, and how many are past", () => {
-    const c = milestoneCells(ms, "ggr2022", "Lanzarote", 4);
-    expect(c.first?.team_id).toBe(11); expect(c.middle?.race_day).toBe(14); expect(c.passed).toBe(3);
+  it("names the first boat through, the boat that makes half the starters past, and how many are past", () => {
+    const c = milestoneCells(ms, "ggr2022", "Lanzarote", 4);        // half of four is the 2nd boat to pass
+    expect(c.first?.team_id).toBe(11); expect(c.middle?.race_day).toBe(13); expect(c.passed).toBe(3);
   });
-  it("has no middle of the fleet until half the starters are through", () => {
+  it("has nothing in that column until half the starters are through", () => {
     const c = milestoneCells(ms, "ggr2022", "Lanzarote", 16);
-    expect(c.middle).toBeNull(); expect(c.passed).toBe(3);
+    expect(c.middle).toBeNull(); expect(c.middleText).toBe("fewer than half"); expect(c.passed).toBe(3);
+  });
+  it("measures two fleets of different size alike: the 8th boat of 16 starters, the 9th of 17", () => {
+    // 2022 (16 starters): Cape of Good Hope, the 8th boat through, race day 78 — not the 9th's day 87.
+    const cogh = [64, 68, 69, 69, 70, 70, 75, 78, 87, 110].map((d, i) => ({ race_key: "ggr2022", team_id: i + 1, milestone: "Cape of Good Hope", passed_at: `2022-11-${String(7 + i).padStart(2, "0")}T00:00:00+00:00`, race_day: d }));
+    expect(milestoneCells(cogh, "ggr2022", "Cape of Good Hope", 16).middle?.race_day).toBe(78);
+    // 2022 Equator, 13 boats through of 16: the 8th passed on race day 36.
+    const eq22 = [31, 33, 33, 33, 33, 36, 36, 36, 37, 38, 41, 42, 42].map((d, i) => ({ race_key: "ggr2022", team_id: i + 1, milestone: "Equator", passed_at: `2022-10-${String(5 + i).padStart(2, "0")}T00:00:00+00:00`, race_day: d }));
+    expect(milestoneCells(eq22, "ggr2022", "Equator", 16).middle?.race_day).toBe(36);
+    // 2018 (17 starters): the 9th boat over the equator, race day 32.
+    const eq18 = [26, 27, 28, 29, 30, 30, 30, 31, 32, 32, 32, 34, 36, 40].map((d, i) => ({ race_key: "ggr2018", team_id: i + 1, milestone: "Equator", passed_at: `2018-07-${String(16 + i).padStart(2, "0")}T00:00:00+00:00`, race_day: d }));
+    expect(milestoneCells(eq18, "ggr2018", "Equator", 17).middle?.race_day).toBe(32);
   });
   it("is empty for a race with no record of that mark at all — 2018 has no Lanzarote timing in YB's record", () => {
-    expect(milestoneCells(ms, "ggr2018", "Lanzarote", 17)).toEqual({ first: null, middle: null, passed: 0 });
+    expect(milestoneCells(ms, "ggr2018", "Lanzarote", 17)).toEqual({ first: null, middle: null, middleText: "fewer than half", passed: 0 });
   });
 });
 
@@ -333,5 +349,180 @@ describe("the three guns", () => {
   it("holds each race's own start, and says how much the same race day can differ between them", () => {
     expect(START_AT).toEqual({ ggr2026: "2026-09-06T12:30:00+00:00", ggr2022: "2022-09-04T14:00:00+00:00", ggr2018: "2018-07-01T10:00:00+00:00" });
     expect(startWords()).toBe("The starts were at 10:00 UTC in 2018, 14:00 in 2022 and 12:30 this year, so the same race day is up to four hours longer or shorter.");
+  });
+});
+
+// ——— Fix round 1 (19 Sep 2026): nothing on the page shows a day later than the figures' day; no number is typed into prose ———
+
+describe("a series never runs past the day the page's figures are of", () => {
+  it("stops at lastDay, so this year's line cannot reach a day the tiles do not show", () => {
+    const days = [day("ggr2026", 11, { wind_kt: 18 }), day("ggr2026", 12, { wind_kt: 19 }), day("ggr2026", 13, { wind_kt: 15 })];
+    expect(series(days, "ggr2026", "wind_kt", 30).map(p => p[0])).toEqual([11, 12, 13]);
+    expect(series(days, "ggr2026", "wind_kt", 30, 3, 12).map(p => p[0])).toEqual([11, 12]);
+  });
+  it("leaves out a day no boat reported into, whatever the field — the worker writes the row before the report is read", () => {
+    const empty = { fresh: 0, leader_team_id: null, leader_mg_nm: null, median_mg_nm: null, mean_run_nm: null, runs_n: 0 };
+    const days = [day("ggr2026", 12, { wind_kt: 19 }), day("ggr2026", 13, { wind_kt: 15, wind_legs: 70, ...empty })];
+    expect(series(days, "ggr2026", "wind_kt", 30).map(p => p[0])).toEqual([12]);
+  });
+  it("draws no fleet mean for a day with fewer runs than the site's floor (2018's race day 9 has one)", () => {
+    const days = [day("ggr2018", 8, { mean_run_nm: 132, runs_n: 16 }), day("ggr2018", 9, { mean_run_nm: 117, runs_n: 1 }), day("ggr2018", 10, { mean_run_nm: 130, runs_n: 16 })];
+    expect(series(days, "ggr2018", "mean_run_nm", 30).map(p => p[0])).toEqual([8, 10]);
+  });
+});
+
+describe("the axis of a whole-race chart", () => {
+  it("is the last day any line reaches, rounded up to the next step — not a fixed 330", () => {
+    expect(axisMax([[[0, 0], [212, 25099]], [[0, 0], [235, 26003]], [[0, 0], [12, 1519]]], 30)).toBe(240);
+    expect(axisMax([[[0, 0], [12, 1519]]], 30)).toBe(30);
+    expect(axisMax([], 30)).toBe(30);
+  });
+});
+
+describe("the race day of a date", () => {
+  it("is the UTC calendar date less the race's own start date (GGR's own numbering)", () => {
+    expect(raceDayOf("2022-11-14T12:00:00+00:00", "ggr2022")).toBe(71);
+    expect(raceDayOf("2022-09-18T04:45:00+00:00", "ggr2022")).toBe(14);
+    expect(raceDayOf("2019-01-29T09:12:00+00:00", "ggr2018")).toBe(212);
+    expect(raceDayOf(null, "ggr2018")).toBeNull();
+  });
+});
+
+describe("the head of the page says which day its figures are of", () => {
+  it("names the race day and the report, for a dateline whose own day is the reader's clock", () => {
+    expect(figuresLine(12, "2026-09-18T00:00:00+00:00")).toBe("figures of race day 12, the 00:00 UTC report of 18 Sep");
+  });
+});
+
+describe("a second attempt's end day comes from the curated record", () => {
+  it("reads the race day off ended_at, not off the last row the tracker sent", () => {
+    const past = [bd("ggr2022", 12, { mg_nm: 575 }), bd("ggr2022", 70, { mg_nm: 7157.9 }), bd("ggr2022", 90, { racing: true, mg_nm: 7000 })];
+    const c = attemptCard([bd("ggr2026", 12, { mg_nm: 1518.9 })], past, { ended_how: "retired", ended_where: "Cape Town", ended_at: "2022-11-14T12:00:00+00:00" }, 12, "ggr2022");
+    expect(c.endDay).toBe(71);                                    // the curated end, although the tracker went on to day 90
+    expect(Math.round(c.endMg!)).toBe(7158);                      // and the miles are of the race up to that day
+  });
+  it("falls back to the last day the record has the boat in the race when no end is recorded", () => {
+    const past = [bd("ggr2022", 12, { mg_nm: 575 }), bd("ggr2022", 40, { mg_nm: 4000 }), bd("ggr2022", 41, { racing: false, fresh: false, mg_nm: null })];
+    expect(attemptCard([bd("ggr2026", 12, { mg_nm: 1518.9 })], past, { ended_how: null, ended_where: null, ended_at: null }, 12, "ggr2022").endDay).toBe(40);
+  });
+});
+
+describe("a sentence that subtracts two figures the page prints", () => {
+  it("subtracts the ROUNDED figures, so a reader's own arithmetic agrees with the tiles", () => {
+    const s = takeaways({ now: day("ggr2026", 12, { median_mg_nm: 1212.28 }), y2022: day("ggr2022", 12, { leader_mg_nm: 1148.6, median_mg_nm: 986.54 }), leaderFirst: "Damien" });
+    expect(s.middle).toBe("The middle of this fleet is 225 nm ahead of 2022’s.");     // the tiles show 1,212 and 987
+  });
+});
+
+describe("the milestones' half-the-fleet column", () => {
+  it("shows the day half the starters were past, and says fewer than half below that", () => {
+    const ms: EditionMilestone[] = [1, 2, 3, 4].map(i => ({ race_key: "ggr2022", team_id: i, milestone: "Hobart", passed_at: `2023-01-0${i}T00:00:00+00:00`, race_day: 110 + i }));
+    expect(milestoneCells(ms, "ggr2022", "Hobart", 8).middle?.race_day).toBe(114);     // the 4th boat of eight starters
+    expect(milestoneCells(ms, "ggr2022", "Hobart", 8).middleText).toBe("");
+    expect(milestoneCells(ms, "ggr2022", "Hobart", 16).middleText).toBe("fewer than half");
+    expect(milestoneCells(ms, "ggr2022", "Hobart", 7).middle?.race_day).toBe(114);     // half of seven rounds up: the 4th boat
+  });
+});
+
+describe("the fleet's thinnest day of runs", () => {
+  it("finds the day a fleet had runs for fewer boats than the floor, and how many were racing", () => {
+    const days = [day("ggr2018", 8, { runs_n: 16 }), day("ggr2018", 9, { runs_n: 1, racing: 16 }), day("ggr2018", 10, { runs_n: 16 })];
+    expect(thinnestRunDay(days, "ggr2018", 30)).toEqual({ raceDay: 9, runs: 1, racing: 16 });
+    expect(thinnestRunDay([day("ggr2026", 1, { runs_n: 0 })], "ggr2026", 30)).toBeNull();   // a day with no run at all is the start day, not a gap
+  });
+});
+
+describe("the rules the page states in words", () => {
+  it("keeps the worker's own figures, so a sentence can be built from them instead of typed", () => {
+    expect(RULE).toEqual({ legHours: 4, slotTolMin: 20, fillMaxGapMin: 200, stoppedKn: 0.2, legsPerRun: 6, minRuns: 3, entered2018: 18 });
+  });
+  it("writes the method in words, with every figure coming from those rules", () => {
+    const w = methodWords();
+    expect(w).toHaveLength(3);
+    expect(w[2]).toBe("A day’s figures come from the 00:00 UTC report, using each boat’s fix within twenty minutes of it. A 24-hour run is the miles sailed over the six 4-hour legs to that report. The wind is model wind at the end of each leg, and the point of sail is the course the boat made good over those four hours, never its heading.");
+    expect(w[0]).toBe("Every fleet keeps YB Tracking’s own distance to finish, and miles made good are that race’s own course length less that distance — each fleet on the course it sailed, compared race day for race day. Nothing is laid on another year’s line. Early in a race the three fleets sail the same water, so their miles can be set side by side; once the courses part, after the equator, the share of each race’s own course is the fairer reading.");
+    expect(w[1]).toBe("A race day is the same day of each race, counted from that race’s own gun. A boat counts as racing until the day its race ended, as the race itself recorded it: where a tracker went on transmitting from a harbour or an abandoned hull, the recorded end wins over the track.");
+  });
+  it("writes the runs note from the same rules", () => {
+    expect(runsNote()).toBe("A day counts only the boats that were moving and had all six legs, and a fleet mean of fewer than three runs is not drawn at all. What changes from race to race is how many of the days are bad ones.");
+  });
+  it("writes the cautions of the day, with the weather caution counting the race's own days", () => {
+    const w = cautionWords({ raceDay: 12, starters2018: 17, thin: { raceDay: 9, runs: 1, racing: 16 } });
+    expect(w).toHaveLength(6);
+    expect(w[0]).toBe("The three fleets sailed three courses: 25,755 nm this year, 26,003 in 2022 and 25,100 in 2018. 2018 did not round Trindade, and only 2022 had gates at Cape Town and Punta del Este. Trindade takes the fleet round the South Atlantic high and sets the angle for the Cape of Good Hope; it is a routing mark, not a different race. So the day is the comparison, and the miles are each race’s own.");
+    expect(w[1]).toContain("The starts were at 10:00 UTC in 2018");
+    expect(w[2]).toBe("2018 has 17 starters here, not the eighteen boats that entered: Francesco Cappelletti never crossed the start line. Only one boat of the sixteen still racing has a 24-hour run on 2018’s race day nine, when the fleet’s reporting rhythm changed through a six-hour silence: from the fourth to the ninth of July 2018 the fleet reported every three hours. In a past race a missing four-hour slot is filled only where a tracker was reporting more often than the 4-hour grid, between two reports at most three hours and twenty minutes apart — never this year.");
+    expect(w[4]).toContain("a 4-hour leg slower than 0.2 kt");
+    expect(w[5]).toBe("The wind is model wind, never measured on board: Open-Meteo’s archive of the ECMWF model for 2018 and 2022, and the model wind this site stores for this year. 12 days of weather are shared by a whole fleet, so read a knot between years as nothing.");
+  });
+  it("leaves the reporting-rhythm sentence out entirely when no fleet day is that thin", () => {
+    const w = cautionWords({ raceDay: 40, starters2018: 17, thin: null });
+    expect(w[2]).toBe("2018 has 17 starters here, not the eighteen boats that entered: Francesco Cappelletti never crossed the start line.");
+    expect(w[5]).toContain("40 days of weather");
+  });
+});
+
+describe("the constants the page states are held to the worker, not to themselves", () => {
+  const read = (f: string) => fs.readFileSync(path.join(__dirname, "../../worker", f), "utf8");
+  it("takes the three course lengths from the RaceSetup fixtures YB itself sent", () => {
+    const fixture: Record<string, string> = { ggr2026: "RaceSetup.20260916.json", ggr2022: "RaceSetup.ggr2022.json", ggr2018: "RaceSetup.ggr2018.json" };
+    for (const [year, file] of Object.entries(fixture)) {
+      const km = JSON.parse(read(`tests/fixtures/${file}`)).course.distance as number;
+      expect(Number((km / 1.852).toFixed(1)), year).toBe(COURSE_NM[year as keyof typeof COURSE_NM]);
+    }
+  });
+  it("takes the three starts from the worker's own EDITIONS table", () => {
+    const py = read("ggrstats/editions_data.py");
+    for (const [year, iso] of Object.entries(START_AT)) {
+      const d = new Date(iso);
+      const want = `"${year}": {"label": "${d.getUTCFullYear()}", "start": D(${d.getUTCFullYear()}, ${d.getUTCMonth() + 1}, ${d.getUTCDate()}, ${d.getUTCHours()}, ${d.getUTCMinutes()})`;
+      expect(py, year).toContain(want);
+    }
+  });
+  it("takes the 4-hour grid, its tolerance, the 3-hourly fill and the stopped-boat speed from the worker's own modules", () => {
+    const grid = read("ggrstats/grid.py"), perf = read("ggrstats/perf.py"), ed = read("ggrstats/editions.py");
+    expect(grid).toContain(`SLOT_S = ${RULE.legHours} * 3600`);
+    expect(grid).toContain(`SLOT_TOL_S = ${RULE.slotTolMin} * 60`);
+    expect(ed).toContain(`max_gap_s=${(RULE.fillMaxGapMin - RULE.slotTolMin) / 60} * 3600 + SLOT_TOL_S`);
+    expect(perf).toContain(`STOPPED_KN = ${RULE.stoppedKn}`);
+    expect(perf).toContain("DAY = 86400");
+    expect(86400 / (RULE.legHours * 3600)).toBe(RULE.legsPerRun);
+  });
+});
+
+// ——— Fix round 1, the audit's addendum: the shared water, the wind table's heading, the fill rule, the method's last line ———
+
+describe("the water the three fleets share", () => {
+  it("is a named distance, and a card says how far to go only while the earlier race ended inside it", () => {
+    expect(SHARED_WATER_NM).toBe(3000);
+    const team = { ended_how: "aground", ended_where: "the north coast of Fuerteventura", ended_at: "2022-09-18T04:45:00+00:00" };
+    const guy = [bd("ggr2022", 12, { mg_nm: 1028 }), bd("ggr2022", 14, { mg_nm: 1299.3 }), bd("ggr2022", 15, { racing: false, fresh: false, mg_nm: null })];
+    const c = attemptCard([bd("ggr2026", 12, { mg_nm: 1203.4 })], guy, team, 12, "ggr2022");
+    expect(c.endDay).toBe(14);
+    expect(c.pass).toBe("About 100 nm to go to where that race ended");
+    // Cape Town is 7,000 nm into a race: by then the courses have parted, and the two figures are of different water.
+    const capeTown = { ended_how: "retired", ended_where: "Cape Town", ended_at: "2022-11-14T12:00:00+00:00" };
+    const damien = [bd("ggr2022", 12, { mg_nm: 600 }), bd("ggr2022", 70, { mg_nm: 7157.9 })];
+    expect(attemptCard([bd("ggr2026", 12, { mg_nm: 1518.9 })], damien, capeTown, 12, "ggr2022").pass).toBe("");
+  });
+});
+
+describe("a heading that carries the day", () => {
+  it("names the span of race days the figures under it are of", () => {
+    expect(spanWords(12)).toBe("days 1 to 12");
+    expect(spanWords(1)).toBe("day 1");
+  });
+});
+
+describe("the words the audit reworded", () => {
+  it("says the fill rule generally — a tracker reporting more often than the grid, in any fleet, never this year", () => {
+    const w = cautionWords({ raceDay: 12, starters2018: 17, thin: { raceDay: 9, runs: 1, racing: 16 } });
+    expect(w[2]).toContain("In a past race a missing four-hour slot is filled only where a tracker was reporting more often than the 4-hour grid");
+    expect(w[2]).not.toContain("slot there");
+  });
+  it("does not tell a reader the miles cannot be compared while the page's own headline compares them", () => {
+    const m = methodWords();
+    expect(m[0]).not.toContain("not mile for mile");
+    expect(m[0]).toContain("Early in a race the three fleets sail the same water, so their miles can be set side by side; once the courses part, after the equator, the share of each race’s own course is the fairer reading.");
   });
 });

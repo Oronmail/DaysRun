@@ -21,6 +21,76 @@ const ord = (n: number) => `${n}${["th", "st", "nd", "rd"][(n % 100 > 10 && n % 
 export const COURSE_NM: Record<Year, number> = { ggr2026: 25754.5, ggr2022: 26003.0, ggr2018: 25099.9 };
 export const shareOfCourse = (mg: number | null | undefined, y: Year) => mg == null ? "—" : `${(mg / COURSE_NM[y] * 100).toFixed(1)}%`;
 
+/** The worker's own rules, named here so that a sentence on the page is BUILT from them and never typed into the JSX, where a
+ *  figure drifts in silence (design rule 14). Each is held to the worker's Python source by a test, in the pattern of the
+ *  RETURNING / VETERAN_HULLS drift guard: grid.SLOT_S, grid.SLOT_TOL_S, editions.fill_slots' max_gap_s, perf.STOPPED_KN, and
+ *  the day divided by the grid for the legs of a 24-hour run. minRuns is the site's own floor (a mean of one boat is not a
+ *  fleet's) and entered2018 is the race's own entry list: 18 entered, 17 crossed the line.  */
+export const RULE = { legHours: 4, slotTolMin: 20, fillMaxGapMin: 200, stoppedKn: 0.2, legsPerRun: 6, minRuns: 3, entered2018: 18 } as const;
+// The 2018 archive's own rhythm, the reason its race day 9 has almost no run (worker/ggrstats/editions.py, fill_slots).
+const RHYTHM_2018 = { from: "the fourth", to: "the ninth of July 2018", everyHours: 3, silenceHours: 6 };
+const hoursMin = (min: number) => `${NUM[Math.floor(min / 60)] ?? Math.floor(min / 60)} hours and ${NUM[min % 60] ?? min % 60} minutes`;
+
+/** The race day of a date, GGR's own numbering: the UTC calendar date less the race's own start date. */
+export function raceDayOf(iso: string | null | undefined, year: Year): number | null {
+  if (!iso) return null;
+  const DAY = 86400000;
+  return Math.floor(new Date(iso).getTime() / DAY) - Math.floor(new Date(START_AT[year]).getTime() / DAY);
+}
+
+/** What the dateline cannot say. The dateline counts the reader's own clock day (a reader takes a dateline for the present), and
+ *  every figure on this page is of the last measured race day — which is yesterday's whenever this year's newest row has not been
+ *  reported into yet. So the page's own sub-line names that day and the report it comes from. (It goes there rather than in the
+ *  dateline's tail because the tail makes the head row too wide for the note beside it at 1,440 px.) */
+export const figuresLine = (raceDay: number, asOf: string) => `figures of race day ${raceDay}, the ${hhmm(asOf)} UTC report of ${dayMon(asOf)}`;
+
+/** The span of race days a panel's figures are of, for the headings that carry it. */
+export const spanWords = (raceDay: number) => raceDay <= 1 ? `day ${raceDay}` : `days 1 to ${raceDay}`;
+
+/** The x axis of a whole-race chart: the last day any line reaches, rounded up to the next step. The lines stop where their own
+ *  data stops (rule 13 stops them at the first boat home), so a fixed axis would leave bare space a reader reads as missing days. */
+export function axisMax(lines: [number, number][][], step = 30): number {
+  const last = Math.max(0, ...lines.flatMap(pts => (pts.length ? [pts[pts.length - 1][0]] : [])));
+  return Math.max(step, Math.ceil(last / step) * step);
+}
+
+/** The day a fleet had 24-hour runs for fewer boats than the floor, although it was racing (2018's race day 9: one run of the
+ *  sixteen boats still in the race, the fleet's reporting rhythm changing under it). A day with NO run at all is the start day
+ *  or a day the whole fleet was silent, not this, and is left out. */
+export function thinnestRunDay(days: EditionDay[], year: string, maxDay: number): { raceDay: number; runs: number; racing: number } | null {
+  const thin = days.filter(d => d.race_key === year && d.race_day <= maxDay && d.runs_n > 0 && d.runs_n < RULE.minRuns).sort((a, b) => a.runs_n - b.runs_n)[0];
+  return thin ? { raceDay: thin.race_day, runs: thin.runs_n, racing: thin.racing } : null;
+}
+
+/** How the page's figures are made, in words: every figure in them comes from RULE, never from the JSX. */
+export function methodWords(): string[] {
+  return [
+    "Every fleet keeps YB Tracking’s own distance to finish, and miles made good are that race’s own course length less that distance — each fleet on the course it sailed, compared race day for race day. Nothing is laid on another year’s line. Early in a race the three fleets sail the same water, so their miles can be set side by side; once the courses part, after the equator, the share of each race’s own course is the fairer reading.",
+    "A race day is the same day of each race, counted from that race’s own gun. A boat counts as racing until the day its race ended, as the race itself recorded it: where a tracker went on transmitting from a harbour or an abandoned hull, the recorded end wins over the track.",
+    `A day’s figures come from the 00:00 UTC report, using each boat’s fix within ${NUM[RULE.slotTolMin] ?? RULE.slotTolMin} minutes of it. A 24-hour run is the miles sailed over the ${NUM[RULE.legsPerRun]} ${RULE.legHours}-hour legs to that report. The wind is model wind at the end of each leg, and the point of sail is the course the boat made good over those ${NUM[RULE.legHours]} hours, never its heading.`,
+  ];
+}
+
+/** The note under the two charts of 24-hour runs. */
+export const runsNote = () =>
+  `A day counts only the boats that were moving and had all ${NUM[RULE.legsPerRun]} legs, and a fleet mean of fewer than ${NUM[RULE.minRuns]} runs is not drawn at all. What changes from race to race is how many of the days are bad ones.`;
+
+/** "Read with care", built from the constants and the day's own rows: the three courses and their routes, the Lanzarote gate and
+ *  the three guns, the 2018 entry list and the day its reporting rhythm changed, Mark Slats's missing distances, the middle of
+ *  the fleet and the boat that is not moving, and the model wind. Nothing here is typed as a figure in the page. */
+export function cautionWords(x: { raceDay: number; starters2018: number; thin: { raceDay: number; runs: number; racing: number } | null }): string[] {
+  const t = x.thin;
+  const rhythm = t == null ? "" : ` Only ${NUM[t.runs] ?? t.runs} boat${t.runs === 1 ? "" : "s"} of the ${NUM[t.racing] ?? t.racing} still racing has a 24-hour run on 2018’s race day ${NUM[t.raceDay] ?? t.raceDay}, when the fleet’s reporting rhythm changed through a ${NUM[RHYTHM_2018.silenceHours]}-hour silence: from ${RHYTHM_2018.from} to ${RHYTHM_2018.to} the fleet reported every ${NUM[RHYTHM_2018.everyHours]} hours. In a past race a missing ${NUM[RULE.legHours]}-hour slot is filled only where a tracker was reporting more often than the ${RULE.legHours}-hour grid, between two reports at most ${hoursMin(RULE.fillMaxGapMin)} apart — never this year.`;
+  return [
+    `The three fleets sailed three courses: ${nm(COURSE_NM.ggr2026)} nm this year, ${nm(COURSE_NM.ggr2022)} in 2022 and ${nm(COURSE_NM.ggr2018)} in 2018. 2018 did not round Trindade, and only 2022 had gates at Cape Town and Punta del Este. Trindade takes the fleet round the South Atlantic high and sets the angle for the Cape of Good Hope; it is a routing mark, not a different race. So the day is the comparison, and the miles are each race’s own.`,
+    `All three races had a gate at Lanzarote, but YB’s record of 2018 holds no timing there, so 2018’s Lanzarote milestone is blank rather than guessed. ${startWords()}`,
+    `2018 has ${x.starters2018} starters here, not the ${NUM[RULE.entered2018] ?? RULE.entered2018} boats that entered: Francesco Cappelletti never crossed the start line.${rhythm}`,
+    "YB’s record carries no distance to finish for the last month of Mark Slats’s 2018 race, so the miles made good and the place are blank on those days, although the positions and the 24-hour runs are real; the 2018 leader and middle of the fleet are then of the boats that have a distance.",
+    `The middle of the fleet is of the boats still racing that day, so it climbs as boats retire: late in a race it describes the survivors. A boat that is not moving — a ${RULE.legHours}-hour leg slower than ${RULE.stoppedKn} kt — is left out of the fleet’s mean and best run for as long as it lies there.`,
+    `The wind is model wind, never measured on board: Open-Meteo’s archive of the ECMWF model for 2018 and 2022, and the model wind this site stores for this year. ${x.raceDay} days of weather are shared by a whole fleet, so read a knot between years as nothing.`,
+  ];
+}
+
 /** Each race's own gun, UTC, from YB's own RaceSetup (the worker reads it with config.race_start; the site cannot, and a test
  *  pins it). The three differ by four hours, which is why the same race day is not the same length of day in every fleet. */
 export const START_AT: Record<Year, string> = { ggr2026: "2026-09-06T12:30:00+00:00", ggr2022: "2022-09-04T14:00:00+00:00", ggr2018: "2018-07-01T10:00:00+00:00" };
@@ -68,7 +138,7 @@ export function windWords(x: { raceDay: number; now: FleetWind; y2022?: FleetWin
   const past = ([["2022", x.y2022], ["2018", x.y2018]] as [string, FleetWind | null | undefined][]).filter((p): p is [string, FleetWind] => p[1]?.kt != null);
   const rel = (w: FleetWind) => Math.abs(w.kt! - K) <= 1.5 ? "about the same" : w.kt! > K ? "more" : "less";
   const clauses = past.map(([label, w]) => `${label} ${rel(w)} (about ${Math.round(w.kt!)} kt)`);
-  const strength = `Through day ${x.raceDay} the model wind at the boats has averaged about ${Math.round(K)} kt this year${clauses.length ? `, ${clauses.slice(0, -1).concat(clauses.slice(-1)).join(" and ")}` : ""}.`;
+  const strength = `Through day ${x.raceDay} the model wind at the boats has averaged about ${Math.round(K)} kt this year${clauses.length ? `, ${clauses.join(" and ")}` : ""}.`;
   if (!past.length) return strength;
   const nose = past.some(([, w]) => w.upwind > 0) || x.now.upwind > 0;
   const band = (w: FleetWind) => nose ? w.upwind : w.running;
@@ -117,30 +187,41 @@ export function boatSeries(rows: EditionBoatDay[], maxDay: number): [number, num
   return [[0, 0], ...rows.filter(r => r.race_day <= maxDay && r.mg_nm != null).sort((a, b) => a.race_day - b.race_day).map(r => [r.race_day, r.mg_nm!] as [number, number])];
 }
 
+/** How far the three courses run over the same water: from Les Sables-d'Olonne to about the equator all three fleets sail the
+ *  same ocean, so a mile made good in one is a mile made good in another. After it this year's course rounds Trindade and 2022's
+ *  went by Cape Town, and miles made good on two courses are no longer of the same water. A card says how far there is still to
+ *  sail only while the earlier race ended inside it. */
+export const SHARED_WATER_NM = 3000;
+
 /** A returning skipper's card: this year's miles made good against the same race day of that skipper's earlier race, where and
  *  how that race ended, and how much further there is to sail to have made good what it made good. The two figures are made good
  *  on courses up to 903 nm apart, so the difference is a rough distance still to go and names no point of anyone's line. */
-export function attemptCard(now: EditionBoatDay[], past: EditionBoatDay[], team: { ended_how: string | null; ended_where: string | null }, raceDay: number):
+export function attemptCard(now: EditionBoatDay[], past: EditionBoatDay[], team: { ended_how: string | null; ended_where: string | null; ended_at?: string | null }, raceDay: number, year: Year):
   { diff: number | null; endDay: number | null; endMg: number | null; endText: string; pass: string } {
   const nowMg = now.find(r => r.race_day === raceDay)?.mg_nm ?? null, thenMg = past.find(r => r.race_day === raceDay)?.mg_nm ?? null;
   const inRace = past.filter(r => r.racing || r.finished).map(r => r.race_day);
-  const endDay = inRace.length ? Math.max(...inRace) : null;
+  // The curated end (team.ended_at, the race's own record) decides the day, not the last row the tracker sent: a tracker can go
+  // on transmitting from a quay for weeks. The last row is only the fallback for a boat with no recorded end at all.
+  const endDay = raceDayOf(team.ended_at ?? null, year) ?? (inRace.length ? Math.max(...inRace) : null);
   const mgs = past.filter(r => r.mg_nm != null && (endDay == null || r.race_day <= endDay)).map(r => r.mg_nm!);
   const endMg = mgs.length ? Math.max(...mgs) : null;                        // the furthest that race ever got, not its last day's figure: a boat sailing into port loses miles made good
   return {
-    diff: nowMg == null || thenMg == null ? null : Math.round(nowMg - thenMg), endDay, endMg,
+    diff: nowMg == null || thenMg == null ? null : Math.round(nowMg) - Math.round(thenMg), endDay, endMg,
     endText: `${team.ended_how ?? "ended"}${team.ended_where ? ` at ${team.ended_where}` : ""}${endDay != null ? `, day ${endDay}` : ""}`,
-    pass: nowMg == null || endMg == null ? "" : toPass(nowMg, endMg),
+    pass: nowMg == null || endMg == null || endMg > SHARED_WATER_NM ? "" : toPass(nowMg, endMg),
   };
 }
 
-/** One milestone of one race: the first boat through, the passing of the middle of the fleet (the boat with as many boats ahead
- *  as behind, of the STARTERS — so it is blank until half the fleet is through), and how many boats are past. Empty where the
- *  race's own record holds no timing at all: YB's 2018 record has no Lanzarote row, although the race had the gate. */
+/** One milestone of one race: the first boat through, the boat whose passing makes HALF THE STARTERS past (the ceil(starters / 2)th
+ *  to pass — the 8th of sixteen, the 9th of seventeen, so that two fleets of different size are measured alike), and how many
+ *  boats are past. Empty where the race's own record holds no timing at all: YB's 2018 record has no Lanzarote row, although the
+ *  race had the gate. "Middle of the fleet" is NOT this: on the tiles and the charts that is the median of the boats still
+ *  racing that day, and the two must not share a name. */
 export function milestoneCells(ms: EditionMilestone[], year: Year, name: string, starters: number):
-  { first: EditionMilestone | null; middle: EditionMilestone | null; passed: number } {
+  { first: EditionMilestone | null; middle: EditionMilestone | null; middleText: string; passed: number } {
   const rows = ms.filter(m => m.race_key === year && m.milestone === name).sort((a, b) => a.passed_at < b.passed_at ? -1 : 1);
-  return { first: rows[0] ?? null, middle: rows[Math.floor(starters / 2)] ?? null, passed: rows.length };
+  const middle = rows[Math.ceil(starters / 2) - 1] ?? null;
+  return { first: rows[0] ?? null, middle, middleText: middle ? "" : "fewer than half", passed: rows.length };
 }
 
 /** A line smoothed over seven points, drawn from the seventh: over a whole race a day's mean run is spiky enough to hide the
@@ -156,17 +237,25 @@ export const latestDay = (days: EditionDay[]) => {
 export const sameDay = (days: EditionDay[], raceDay: number) => YEARS.map(y => days.find(d => d.race_key === y && d.race_day === raceDay)).filter((d): d is EditionDay => !!d);
 
 type SeriesField = "leader_mg_nm" | "median_mg_nm" | "mean_run_nm" | "wind_kt";
+/** A race day the worker wrote a row for before any boat had reported into it (it writes the row when the report is due, not
+ *  when it is read): nothing of that day may be drawn, whatever the field — the wind is the field that has a part-day value. */
+const unmeasured = (d: EditionDay) => d.fresh === 0 && d.leader_mg_nm == null;
 /** [x, y] points from day 0 (the gun, 0 nm) to maxDay. A value is carried as a running maximum for the leader (a finisher's day
  *  counts as the course); the middle line stops before the first day on which fewer than minRacing boats are in the set
  *  (racing + finished). Rule 13: the whole-race lines — leader's and middle's alike — stop at, and include, the first race day
  *  on which any boat has finished (a finished fleet is not the fleet the "middle" or "leader" figures were built to describe).
- *  A day without the value is skipped, never bridged with a guess. */
-export function series(days: EditionDay[], year: string, field: SeriesField, maxDay: number, minRacing = 3): [number, number][] {
+ *  A day without the value is skipped, never bridged with a guess. `lastDay` is the day the page's figures are of: this year's
+ *  line must never reach a day the tiles do not show (the wind of a part-day would otherwise end the line beyond them), while a
+ *  past race, whose whole record is in, is drawn to maxDay. A fleet mean of fewer than RULE.minRuns runs is not drawn at all:
+ *  2018's race day 9 has exactly one, and one boat is not a fleet. */
+export function series(days: EditionDay[], year: string, field: SeriesField, maxDay: number, minRacing = 3, lastDay = Infinity): [number, number][] {
   const out: [number, number][] = field === "mean_run_nm" || field === "wind_kt" ? [] : [[0, 0]];
   const wholeRace = field === "leader_mg_nm" || field === "median_mg_nm";
   let top = 0;
-  for (const d of days.filter(d => d.race_key === year && d.race_day <= maxDay).sort((a, b) => a.race_day - b.race_day)) {
+  for (const d of days.filter(d => d.race_key === year && d.race_day <= Math.min(maxDay, lastDay)).sort((a, b) => a.race_day - b.race_day)) {
     if (field !== "leader_mg_nm" && d.racing + d.finished < minRacing) break;
+    if (unmeasured(d)) continue;
+    if (field === "mean_run_nm" && d.runs_n < RULE.minRuns) continue;
     const v = d[field];
     if (v != null) {
       if (field === "leader_mg_nm") { top = Math.max(top, v); out.push([d.race_day, top]); } else out.push([d.race_day, v]);
@@ -184,9 +273,9 @@ export const raceDayLabel = (raceDay: number, asOf: string) => `day ${raceDay} �
  *  point of anyone's line. */
 export function toPass(nowMg: number, endMg: number): string {
   const d = endMg - nowMg;
-  if (d <= 0) return "past that point";
-  if (d < 500) return `about ${Math.round(d / 10) * 10} nm to go to where that race ended`;
-  return `about ${nm(Math.round(d / 100) * 100)} nm to go to where that race ended`;
+  if (d <= 0) return "Past that point";
+  if (d < 500) return `About ${Math.round(d / 10) * 10} nm to go to where that race ended`;
+  return `About ${nm(Math.round(d / 100) * 100)} nm to go to where that race ended`;
 }
 
 /** Rows of this year cut to the page's own as-of clock: the worker already leaves out a milestone passed after the report
@@ -221,16 +310,23 @@ export function pointTip(b: EditionBoatDay, t: TeamWords, of: number): Tip {
   };
 }
 
-/** A day's legs as shares of upwind / reaching / running that always add to exactly 100 (the remainder after rounding the other
- *  two goes to "reaching", the middle band), or all zero when the day has no legs at all. */
+/** A day's legs as shares of upwind / reaching / running that always add to exactly 100, by the largest-remainder method: each
+ *  share is rounded DOWN and the spare points go to the largest fractions. Giving the remainder to the middle band instead (the
+ *  first rule here) could round a share the wrong way — 14.72 / 17.69 / 67.59 printed 15 / 17 / 68, and 17.69 is not 17.
+ *  All zero when the day has no legs at all. */
 export function windShares(d: Legs): { upwind: number; reaching: number; running: number } {
   const n = d.legs_upwind + d.legs_reaching + d.legs_running;
   if (!n) return { upwind: 0, reaching: 0, running: 0 };
-  const up = Math.round(d.legs_upwind / n * 100), run = Math.round(d.legs_running / n * 100);
-  return { upwind: up, reaching: 100 - up - run, running: run };
+  const exact = [d.legs_upwind, d.legs_reaching, d.legs_running].map(v => v / n * 100);
+  const out = exact.map(Math.floor);
+  const spare = 100 - out.reduce((a, b) => a + b, 0);
+  [...exact.keys()].sort((a, b) => (exact[b] - out[b]) - (exact[a] - out[a])).slice(0, spare).forEach(i => out[i]++);
+  return { upwind: out[0], reaching: out[1], running: out[2] };
 }
 
-const ahead = (a: number, b: number) => `${nm(Math.abs(a - b))} nm ${a >= b ? "ahead of" : "behind"}`;
+// The page prints both figures rounded, so the difference is of the ROUNDED figures: a reader who subtracts the two tiles
+// must get the number in the sentence (1,212 − 987 = 225, not the 226 the raw values give).
+const ahead = (a: number, b: number) => { const d = Math.round(a) - Math.round(b); return `${nm(Math.abs(d))} nm ${d >= 0 ? "ahead of" : "behind"}`; };
 /** Both past years are optional: this year's race outruns 2022's last finisher around day 278 and 2018's around day 322, and
  *  from there on there is nothing left on the course to compare against. When neither is given, the lead sentence still says
  *  where the leader stands on the day (no fabricated comparison), and the middle sentence — which exists only to compare —
