@@ -59,3 +59,24 @@ def test_fleet_angles_on_the_golden_snapshot():
     assert by[12]["vs_near_nm"] > 5                                                   # Henry sailed the fleet's longest run that day
     assert all(b["lever_dir"] in (None, "N", "NE", "E", "SE", "S", "SW", "W", "NW") for b in snap["boats"])
     assert 0 < by[10]["lever_nm"] < 120
+
+
+def test_a_leg_the_boat_spent_moored_is_no_measure_of_her_speed_for_the_wind():
+    """18 Sep 2026: Guy deBoer lay at Lanzarote from about 17:50 UTC. Every four hours after that added a leg of 0.07 kt in a real
+    breeze, and those legs were counted like any other: they pulled his speed for the wind down for the rest of the race, put a
+    moored boat's compass noise into his point-of-sail table, and sat in the fleet's median. A boat that is not moving is not
+    sailing badly; she is not sailing. The owner's rule of 18 Sep, one level deeper than the daily board's average."""
+    sailing = [leg(i * 14400, 5.0) for i in range(1, 13)]
+    moored = [leg(i * 14400, 0.07, cmg=(i * 37) % 360) for i in range(13, 19)]       # six reports alongside, the compass wandering
+    wind = {l["end_at"]: (10.0, 0.0) for l in sailing + moored}
+    p = perf.wind_stats(sailing + moored, wind)
+    assert p["wind_legs"] == 12 and abs(p["wind_ratio"] - 0.5) < 1e-9                # the twelve she sailed, not eighteen
+    assert p["pos"]["running"]["legs"] == 12 and set(p["pos"]) == {"running"}        # and no band invented out of her wandering
+    assert perf.wind_stats(sailing, wind)["wind_ratio"] == p["wind_ratio"]           # the same answer as if she had never stopped
+
+
+def test_night_and_day_leave_out_the_hours_she_was_not_moving():
+    sailing = [leg(i * 14400, 6.0) for i in range(1, 13)]
+    moored = [leg(i * 14400, 0.07) for i in range(13, 25)]
+    a, b = perf.night_day(sailing), perf.night_day(sailing + moored)
+    assert a == b

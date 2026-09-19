@@ -9,6 +9,15 @@ from .grid import resample, gc_nm, bearing_deg, SLOT_S, slot_time
 
 DAY = 86400
 BANDS = ("upwind", "reaching", "running")
+# A boat that is not moving: a 4-hour leg under 0.2 kt, which is under 0.8 nm in four hours. A boat lying at a mark or in a marina
+# wanders a few metres (Guy deBoer at Lanzarote, 18 Sep 2026: 0.28 nm in four hours) while a boat becalmed still drifts with the
+# current, so the line is low enough that weather alone never crosses it. Such a leg is no measure of how a boat sails: it is left
+# out of the speed for the wind, of the point-of-sail table and of night against day. It is NOT left out of `parked_h7`, which is
+# there to count exactly those hours, nor of her 24-hour run, which is a fact about the distance she covered.
+# The same rule and the same figure live on the site, in `site/lib/slide.ts` (isStopped, the daily board's fleet average).
+STOPPED_KN = 0.2
+def sailing(legs):
+    return [l for l in legs if l["speed_kn"] >= STOPPED_KN]
 COMPASS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 
 def all_legs(fixes, start_at, t0=0, until=None):
@@ -32,9 +41,10 @@ def point_of_sail(wind_from_deg, cmg_deg):
 
 def wind_stats(legs, wind_by_slot, lo=8.0, hi=25.0, min_legs=10):
     """wind_by_slot: {slot end time: (wind_kn, wind_from_deg)}. Speed for the wind = mean of leg speed / model wind speed over
-    legs sailed in lo–hi knots (below that a heavy boat barely moves, above it she is reefed: neither says much about efficiency)."""
+    legs sailed in lo–hi knots (below that a heavy boat barely moves, above it she is reefed: neither says much about efficiency).
+    A leg the boat spent not moving is left out altogether (see STOPPED_KN): it says nothing about how she sails."""
     ratios, bands = [], {b: [] for b in BANDS}
-    for l in legs:
+    for l in sailing(legs):
         w = wind_by_slot.get(l["end_at"])
         if not w or w[0] is None or w[1] is None:
             continue
@@ -55,7 +65,7 @@ def consistency(legs, T, days=7):
 def night_day(legs, min_each=6):
     """Average leg speed at night minus by day. Local solar time of the leg's midpoint from the longitude; night is 2000–0600."""
     night, day = [], []
-    for l in legs:
+    for l in sailing(legs):
         mid = (l["start_at"] + l["end_at"]) / 2
         h = ((mid % DAY) / 3600.0 + l["lon"] / 15.0) % 24
         (night if (h >= 20 or h < 6) else day).append(l["speed_kn"])

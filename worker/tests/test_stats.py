@@ -171,3 +171,22 @@ def test_the_race_start_survives_a_tag_yb_adds_later():
     assert config.race_start({"tags": [], "teams": [{"id": 1, "start": 1788697800}]}) == 1788697800
     with pytest.raises(ValueError):
         config.race_start({"tags": [{"id": 9}], "teams": [{"id": 1}]})                                    # nothing to read: say so plainly
+
+
+def test_a_boat_that_is_not_moving_is_no_part_of_her_neighbours_median():
+    """"Against the boats nearby" sets a boat's 24-hour run against the median run of the boats within 150 nm, which sail much the
+    same weather. A boat lying in a marina sails no weather at all, and one motionless boat in the middle of a small median moves
+    it a long way: on 18 Sep 2026 Guy deBoer lay at Lanzarote among five boats rounding the mark. She keeps her own figure — the
+    miles she covered are a fact — but she is no measure for her neighbours. The owner's rule of 18 Sep."""
+    from ggrstats import stats
+    def boat(tid, run, leg_kn, lat=28.0):
+        return {"id": tid, "first": f"B{tid}", "lat": lat, "lon": -14.0, "stale": False,
+                "w24": {"dist_nm": run}, "w4": {"speed_kn": leg_kn}}
+    boats = [boat(1, 150, 6.0), boat(2, 140, 5.5), boat(3, 130, 5.0), boat(4, 120, 4.5), boat(5, 40, 0.07)]
+    stats.against_the_nearby(boats)
+    by = {b["id"]: b for b in boats}
+    assert by[1]["near_n"] == 3 and abs(by[1]["vs_near_nm"] - (150 - 130)) < 1e-9      # the median of 140, 130, 120 — not of 40
+    assert abs(by[5]["vs_near_nm"] - (40 - 135)) < 1e-9                                # she keeps her own figure, against the four sailing
+    far = [boat(1, 150, 6.0), boat(2, 140, 5.5, lat=40.0), boat(3, 130, 5.0, lat=41.0)]
+    stats.against_the_nearby(far)
+    assert far[0]["vs_near_nm"] is None and far[0]["near_n"] == 0                      # nobody within 150 nm: nothing to say

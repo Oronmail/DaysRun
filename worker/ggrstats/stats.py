@@ -156,6 +156,26 @@ def sanity_problems(snapshot, previous, course_nm):
                 out.append(f"{b['first']}: distance to finish rose by {round(rise)} nm in {round(hours)} hours (limit {round(DTF_RISE_LIMIT_NM_PER_4H * hours / 4.0)})")
     return out
 
+def moored(b):
+    """A boat that is not moving: her newest 4-hour leg under `perf.STOPPED_KN` (0.2 kt, 0.8 nm in four hours). The rule and the
+    reasoning live in perf.py, beside the legs it also governs."""
+    return bool(b.get("w4")) and b["w4"]["speed_kn"] < perf.STOPPED_KN
+
+def against_the_nearby(boats, radius_nm=150.0, min_boats=2):
+    """Each boat's 24-hour run against the MEDIAN run of the boats within `radius_nm`, which sail much the same weather.
+    A boat that is not moving is left out of that median: she sails no weather at all, and one motionless boat moves a small
+    median a long way (18 Sep 2026, Guy deBoer lying at Lanzarote among the boats rounding the mark). She keeps her own figure,
+    measured against the boats that are sailing — the miles she covered are a fact. Sets vs_near_nm and near_n on each boat."""
+    for b in boats:
+        near = sorted(o["w24"]["dist_nm"] for o in boats if o is not b and o["w24"] and not o["stale"] and not moored(o)
+                      and gc_nm(b["lat"], b["lon"], o["lat"], o["lon"]) < radius_nm)
+        b["near_n"] = len(near)
+        if not (b["w24"] and not b["stale"] and len(near) >= min_boats):
+            b["vs_near_nm"] = None
+            continue
+        m = len(near) // 2
+        b["vs_near_nm"] = b["w24"]["dist_nm"] - (near[m] if len(near) % 2 else (near[m - 1] + near[m]) / 2)
+
 def compute_snapshot(setup, fixes_by_team, T, conditions=None):
     """conditions: db.load_conditions, for the weather boards (None = boards without weather, as verify and the tests call it)."""
     start_at = config.race_start(setup)
@@ -237,16 +257,11 @@ def compute_snapshot(setup, fixes_by_team, T, conditions=None):
     lead_now, lead_then = dtf_near(racing[leader["id"]], T), dtf_near(racing[leader["id"]], T - DAY)
     lead_slots = resample(racing[leader["id"]], start_at)
     lead_track = [lead_slots[k] for k in sorted(lead_slots) if k <= KT]
+    against_the_nearby(boats)
     for b in boats:
         now, then = dtf_near(racing[b["id"]], T), dtf_near(racing[b["id"]], T - DAY)
         known = b is not leader and None not in (now, then, lead_now, lead_then)
         b["gain24_nm"] = (then - lead_then) - (now - lead_now) if known else None      # miles gained (+) on today's leader in 24 h
-        near = [o["w24"]["dist_nm"] for o in boats if o is not b and o["w24"] and not o["stale"]
-                and gc_nm(b["lat"], b["lon"], o["lat"], o["lon"]) < 150]
-        ok = b["w24"] and not b["stale"] and len(near) >= 2
-        b["vs_near_nm"] = b["w24"]["dist_nm"] - sorted(near)[len(near) // 2] if ok and len(near) % 2 else (
-            b["w24"]["dist_nm"] - (sorted(near)[len(near) // 2 - 1] + sorted(near)[len(near) // 2]) / 2 if ok else None)
-        b["near_n"] = len(near)
         b["lever_nm"], b["lever_dir"] = (None, None) if b is leader or b["stale"] else perf.leverage(lead_track, b["lat"], b["lon"])
     best_run = max((b["w24"]["dist_nm"] for b in boats if b["w24"]), default=None)   # None until a 24-hour window exists
     for b in boats:
