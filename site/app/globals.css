@@ -104,3 +104,10 @@ main svg[viewBox] { max-width: 100%; height: auto; }
 .tiplink { display: block; margin-top: 4px; color: var(--link); text-decoration: underline; text-underline-offset: 2px; }
 @media (max-width: 900px) { .tipbox, .tipbox.flip, .tipbox.up { left: 0; right: auto; top: auto; bottom: calc(100% + 4px); white-space: normal; width: 214px; transform: translateX(calc(-1 * var(--x))); }   /* above the chart, where a finger does not cover it; it slides with the target and cannot leave the screen */
   .tipbox.row, .tipbox.row.up { left: auto; right: 6px; transform: none; top: calc(100% + 2px); bottom: auto; } .tipbox.row.up { top: auto; bottom: calc(100% + 2px); } }
+
+/* Past races: one mark per year on the chart of the ocean. Gold carries a darker rim so that it holds on the pale panel. */
+.yr-mark { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); box-sizing: border-box; border: 1.5px solid var(--panel); }
+.yr-mark.ggr2026 { width: 12px; height: 12px; border-radius: 50%; background: var(--year-2026); border-color: var(--gold-edge); }
+.yr-mark.ggr2022 { width: 9px; height: 9px; background: var(--year-2022); }
+.yr-mark.ggr2018 { width: 9px; height: 9px; background: var(--year-2018); transform: translate(-50%, -50%) rotate(45deg); }
+.pt:hover .yr-mark, .pt:focus .yr-mark, .pt.open .yr-mark { outline: 2px solid var(--ink); outline-offset: 2px; }
