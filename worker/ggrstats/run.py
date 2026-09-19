@@ -3,7 +3,7 @@
 import argparse, gzip, json, logging, pathlib, sys, time
 from datetime import datetime, timezone
 import requests
-from . import backfill, backup, config, course, db, decode, events, monitoring, perf, stats, weather, yb
+from . import backfill, backup, config, db, decode, events, monitoring, perf, stats, weather, yb
 from .grid import SLOT_S, slot_time
 
 log = logging.getLogger("ggrstats")
@@ -152,23 +152,20 @@ def cmd_verify(conn, race, as_of, golden_path):
 IMPORT_ENDPOINTS = ("RaceSetup", "zegments", "AllPositions3")    # an import reads no leaderboard, and YB served 2018's as a 503
 WIND_WAIT_S = (60, 300)                                          # the archive refused once, twice: wait, ask again, then stop and resume later
 
-def _measure(conn, race, with_line=False):
+def _measure(conn, race):
     """THIS race's own course length in nm, which is what its own fleet's miles made good are counted against. Every fleet keeps
     YB's own distance to finish, so each is measured on the course it actually sailed and no fleet needs another year's RaceSetup:
     25,754.5 (2026), 26,003.0 (2022), 25,099.9 (2018) nm. The three differ by 903 nm and the page says so in words, rather than
     projecting two fleets onto a third's course line to hide it — a projection that could not deliver what it promised.
 
     `course.distance` is YB's own course sum in km, and course.Line reproduces it to a tenth of a mile; taking it straight from
-    the stored RaceSetup means the page's denominator is YB's figure, not a sum of ours.
-
-    with_line: also THIS race's own course line, plain (no corner smoothing — the swept-bearing measure belongs to this year's
-    Trindade dog-leg and to no past course). A PAST race only, and read for one thing only: a fix YB gave no distance to finish at
-    all (editions.measure_missing). This year's path never asks for it, so no fix of 2026 can be anything but YB's own figure."""
+    the stored RaceSetup means the page's denominator is YB's figure, not a sum of ours. No course LINE is built for any fleet:
+    where YB's record gives a fix no distance at all the page shows the position and leaves every figure counted off a distance
+    blank, rather than reading a measure of ours beside YB's own in the same fleet row."""
     row = conn.execute("select raw_setup from race where key=%s", (race,)).fetchone()
     if not row:
         raise RuntimeError(f"the {race} race row is missing: import or capture that race before computing its days")
-    nm = row[0]["course"]["distance"] / 1.852
-    return (nm, course.Line(row[0]["course"]["nodes"], corners=())) if with_line else nm
+    return row[0]["course"]["distance"] / 1.852
 
 def cmd_import_edition(conn, race, from_dir=None):
     """A past race into the database, once: RaceSetup, the split times and every fix from YB's own endpoints, or from a folder
@@ -211,7 +208,7 @@ def cmd_editions(conn, race, as_of, since=None, fixes=None):
     from . import editions, editions_data
     start = editions_data.EDITIONS[race]["start"]
     past = race != config.RACE_KEY
-    course_nm, line = _measure(conn, race, with_line=True) if past else (_measure(conn, race), None)
+    course_nm = _measure(conn, race)
     fixes = fixes if fixes is not None else db.load_fixes(conn, race)
     ends = db.team_ends(conn, race)                                          # ghosts are not in it; a past race's rows are the curated ones
     if race == config.RACE_KEY:
@@ -231,13 +228,19 @@ def cmd_editions(conn, race, as_of, since=None, fixes=None):
         log.info("editions %s: no race day to write yet", race)
         return {"days": [], "boat_days": [], "milestones": [], "notes": {}}
     out = editions.compute({tid: fx for tid, fx in fixes.items() if tid in ends}, ends, start, course_nm, days, winds,
-                           past, splits=db.load_splits(conn, race), until=until, line=line)
+                           past, splits=db.load_splits(conn, race), until=until)
     db.replace_edition_days(conn, race, out["days"])
     db.replace_edition_boat_days(conn, race, out["boat_days"])
     db.replace_edition_milestones(conn, race, out["milestones"])             # the whole race's table is the unit of replacement
     conn.commit()
     log.info("editions %s: race days %d to %d, %d boat-days, %d milestones, %s", race, days[0], days[-1], len(out["boat_days"]),
              len(out["milestones"]), out["notes"])
+    blank = out["notes"].get("unmeasured_boat_days") or {}
+    if blank:                                                                # named, not counted: the page's "Read with care" says who
+        named = dict(conn.execute("select id, name from team where race_key=%s and id = any(%s)", (race, list(blank))).fetchall())
+        log.warning("editions %s: %d boat-day(s) show a position but no distance to finish, YB's record giving none — %s. Miles made "
+                    "good, place and the fleet's leader, middle and last are blank for those reports, and nothing is guessed.", race,
+                    sum(blank.values()), ", ".join(f"{named.get(tid, tid)} {n}" for tid, n in sorted(blank.items())))
     return out
 
 def _utc(t):
@@ -284,9 +287,9 @@ def cmd_import_edition_wind(conn, race, pace_s=2.0, until_day=None, batch=20, ma
     """Model wind at the end of every 4-hour leg of a past race, from Open-Meteo's archive: at exactly the slots the page's own
     figures are built on (editions.past_slots), and only at a slot that ENDS a leg — a slot with no predecessor ends none, and
     asking for it would spend an allowance that is counted per location per day. past_slots IS prepare's own pipeline for a past
-    fleet, with the race's own course line behind it, so the archive is asked for exactly the slots the page has a leg at and for
-    no other — the run that measures Mark Slats's last month back onto the page must fetch its wind too. `until_day` stops at
-    that race day, so the owner can take the race a few days at a time. One batch at a time, each stored and committed before the next is asked for, because
+    fleet, so the archive is asked for exactly the slots the page has a leg at and for no other — including the slots YB gave no
+    distance to finish, which the page sails and shows the wind of. `until_day` stops at that race day, so the owner can take the
+    race a few days at a time. One batch at a time, each stored and committed before the next is asked for, because
     one archive call is all-or-nothing (weather.fetch_archive_wind); `pace_s` between calls. The archive's own wall (429, 5xx, a
     body that is not JSON) is waited out and the SAME batch asked again; after max_failures in a row the run stops cleanly and
     says what is left — it inserts only, so the next run asks for exactly what is still missing. Any other error is a programming
@@ -294,12 +297,11 @@ def cmd_import_edition_wind(conn, race, pace_s=2.0, until_day=None, batch=20, ma
     from . import editions, editions_data
     sleep = sleep or time.sleep
     start = editions_data.EDITIONS[race]["start"]
-    _, line = _measure(conn, race, with_line=True)                           # the same line cmd_editions measures this fleet with
     fixes, ends, points = db.load_fixes(conn, race), db.team_ends(conn, race), {}
     for tid, fx in fixes.items():
         if tid not in ends:
             continue
-        slots = editions.past_slots(fx, start, ends[tid]["ended_at"], line)
+        slots = editions.past_slots(fx, start, ends[tid]["ended_at"])
         for k, f in slots.items():
             t = slot_time(k)
             if k - 1 in slots and (until_day is None or editions.race_day_of(t, start) <= until_day):

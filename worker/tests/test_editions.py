@@ -28,12 +28,9 @@ START = U("2026-09-06T12:00:00")                                            # a 
 SETUP26 = json.load(open(FIX / "RaceSetup.20260916.json"))                  # this year's course; the retired yardstick's line
 LINE26 = course.Line(SETUP26["course"]["nodes"])                            # read by `projected` alone: the retired yardstick
 T26 = 1789516800                                                            # 2026-09-16 00:00 UTC, the golden report
-SETUPS = {race: json.load(open(FIX / f"RaceSetup.{race}.json")) for race in ("ggr2018", "ggr2022")}
-# Each past race's OWN course, as the page now measures it: the length is YB's own course sum (run._measure), and the plain line
-# is read for one thing only — a fix YB gave no distance to finish (measure_missing). corners=() because the swept-bearing
-# measure smooths this year's Trindade dog-leg, which is no corner of either past course.
-COURSE_NM_OF = {race: SETUPS[race]["course"]["distance"] / 1.852 for race in SETUPS}
-LINES = {race: course.Line(SETUPS[race]["course"]["nodes"], corners=()) for race in SETUPS}
+# Each past race's OWN course length, which is what its own fleet's miles made good are counted against: YB's own course sum,
+# exactly as run._measure reads it from the stored RaceSetup. No course LINE is on the page's path for any fleet.
+COURSE_NM_OF = {race: json.load(open(FIX / f"RaceSetup.{race}.json"))["course"]["distance"] / 1.852 for race in ("ggr2018", "ggr2022")}
 
 def on_a_line(fx, line, ended_at=None):
     """The RETIRED common yardstick, kept here as a fixture builder: cut, fill the three-hourly gaps, then measure every fix on
@@ -52,11 +49,11 @@ def load_sample(race):
 _PREPARED = {}
 def prepared(race):
     """Every sampled boat of a past race as the PAGE prepares her: cut at her documented end, her three-hourly gaps filled, and on
-    YB's own distance to finish for her own race — with the race's own course line behind it for the fixes YB gave no distance at
-    all (measure_missing), which is exactly what run.cmd_editions hands compute. Computed once for the whole file."""
+    YB's own distance to finish for her own race — a fix YB gave none keeps its position and carries no distance, exactly as
+    run.cmd_editions has it. Computed once for the whole file."""
     if race not in _PREPARED:
         start, sample = editions_data.EDITIONS[race]["start"], load_sample(race)
-        _PREPARED[race] = {r["id"]: editions.prepare(sample[r["id"]], start, r["ended_at"], r["ended_how"], fill=True, line=LINES[race])
+        _PREPARED[race] = {r["id"]: editions.prepare(sample[r["id"]], start, r["ended_at"], r["ended_how"], fill=True)
                            for r in editions_data.TEAMS[race] if r["id"] in sample}
     return _PREPARED[race]
 
@@ -311,88 +308,48 @@ def test_an_added_fix_carries_a_distance_between_its_neighbours_and_none_when_a_
 
 # ---------------------------------------------------------------- the fixes YB gave no distance to finish
 
-def test_a_past_boat_whose_tracker_stopped_giving_a_distance_is_measured_on_her_own_races_line():
+def test_a_past_boat_keeps_her_water_where_yb_gave_no_distance_and_every_distance_figure_stays_blank():
     """YB's 2018 record gives Mark Slats a distance to finish of nought for every fix from 1 Jan 2019 04:10 UTC (race day 183.8,
-    3°S 28°W, about 1,900 nm from home) to the finish on race day 214.6 — 589 reports of real mid-ocean sailing that
-    grid.resample drops as in-port noise, because nought is how a tracker on a quay reads. A PAST fleet therefore measures those
-    fixes, and only those, on THAT RACE'S OWN course line, never on another year's: the projection across years is what this page
-    retired. Without this the second boat of the 2018 race is blank for the last month of it — the run-in to Les Sables beside
-    Jean-Luc Van Den Heede, the most-watched boat-days of that race."""
+    3°S 28°W) to his finish on race day 214.6 — 589 reports of real mid-ocean sailing, which grid.resample drops as in-port noise
+    because nought is how a tracker on a quay reads. A PAST fleet KEEPS them: the position is YB's and is true, so the run, the
+    legs, the miles sailed, the position and the freshness are all hers. What YB never gave is not invented — no distance to
+    finish, no miles made good, no place. BLANK, NEVER GUESSED: a measure of ours in the same fleet row as YB's own figures
+    disagreed with YB by up to 178 nm where it could be checked, and joined its own first value 52 nm away from YB's last."""
     start = editions_data.EDITIONS["ggr2018"]["start"]
     row = next(r for r in editions_data.TEAMS["ggr2018"] if r["id"] == 68)
-    raw = load_sample("ggr2018")[68]
-    bare = editions.prepare(raw, start, row["ended_at"], row["ended_how"], fill=True)
-    b = editions.prepare(raw, start, row["ended_at"], row["ended_how"], fill=True, line=LINES["ggr2018"])
-    assert (bare["measured"], b["measured"]) == (0, 589)
-    assert (len(bare["slots"]), len(b["slots"])) == (1097, 1276)                              # 179 slots of race days 184 to 214, back
+    b = editions.prepare(load_sample("ggr2018")[68], start, row["ended_at"], row["ended_how"], fill=True)
+    assert len(b["slots"]) == 1276                                                            # 179 slots of race days 184 to 214, kept
+    assert sum(1 for f in b["slots"].values() if not f.get("dtf")) == 179
     T = editions.day_zero(start) + 200 * 86400
     r = editions.boat_day(b, start, T, COURSE_NM_OF["ggr2018"])
-    assert r["fresh"] and r["run24_nm"] is not None and r["mg_nm"] is not None and r["sailed_nm"] is not None
-    assert not editions.boat_day(bare, start, T, COURSE_NM_OF["ggr2018"])["fresh"]            # and blank without the line
-    yb_own = {f["at"]: f["dtf"] for f in raw if f.get("dtf")}
-    assert all(f["dtf"] == yb_own[f["at"]] for f in b["fixes"] if f["at"] in yb_own)          # every figure YB did give is untouched
-    assert sum(1 for f in b["fixes"] if f.get("measured")) == 589
+    assert r["racing"] and r["fresh"] and r["position_text"] and r["run24_nm"] is not None and r["sailed_nm"] is not None
+    assert r["togo_nm"] is None and r["mg_nm"] is None and r["place"] is None                 # nothing counted off a distance
+    assert len(editions.day_legs(b["slots"], T)) == 6                                         # and the wind still has its six legs
+    early = editions.boat_day(b, start, editions.day_zero(start) + 100 * 86400, COURSE_NM_OF["ggr2018"])
+    assert early["fresh"] and early["mg_nm"] is not None                                      # the days YB did give a distance are untouched
+    assert past_crossings("ggr2018", 68)["Finish"] == row["ended_at"]                         # and the finish is the curated date, as it always was
 
-def test_slats_is_in_the_2018_fleets_own_figures_for_the_month_yb_gave_no_distance():
-    """Not the one row alone: the place, and the fleet's middle, over the days the dropped fixes would have emptied. On race day
-    200 the 2018 sample is down to Mark Slats and Jean-Luc Van Den Heede, so a fleet row missing one of them has a median equal
-    to the leader's and no second place at all. The order is the one the race had: Van Den Heede led the run-in and finished on
-    29 January, Mark Slats on 31 January, and this is where a measure of ours is read beside YB's own for the same fleet on the
-    same day — Van Den Heede 1,554.3 nm of YB's to go, Mark Slats 1,572.4 measured here, 18 nm apart. The plain nearest point of
-    the polyline, with no floor, gave Mark Slats 1,514.3 and the lead of a race he never led."""
+def test_slats_keeps_his_own_row_and_leaves_the_2018_fleets_middle_where_yb_gave_no_distance():
+    """The fleet row of race day 200, when the 2018 sample is down to Mark Slats and Jean-Luc Van Den Heede. A boat with a
+    position but no distance is still RACING and still FRESH, and her run is a real run, so she stays in the fleet's mean run
+    and can hold its best; she is out of the leader, the middle and the last, which are all read off miles made good, and out of
+    the places. Nothing of the fleet's is computed against a figure of ours."""
     start = editions_data.EDITIONS["ggr2018"]["start"]
     T = editions.day_zero(start) + 200 * 86400
     rows = {tid: editions.boat_day(b, start, T, COURSE_NM_OF["ggr2018"]) for tid, b in prepared("ggr2018").items()}
     editions.assign_places(rows)
-    assert (rows[8]["place"], rows[68]["place"]) == (1, 2)
-    assert (round(rows[8]["togo_nm"], 1), round(rows[68]["togo_nm"], 1)) == (1554.3, 1572.4)
+    assert rows[8]["place"] == 1 and rows[68]["place"] is None and rows[68]["racing"] and rows[68]["fresh"]
     d = editions.fleet_day(rows, T, start, None)
-    assert d["fresh"] == 2 and d["median_mg_nm"] is not None and d["median_mg_nm"] < d["leader_mg_nm"]
+    assert d["racing"] == 2 and d["fresh"] == 2                                               # both boats are in the race and both reported
+    assert d["leader_team_id"] == 8 and d["median_mg_nm"] == d["leader_mg_nm"] == d["last_mg_nm"]   # one boat carries a distance
+    assert d["runs_n"] == 2 and d["mean_run_nm"] is not None                                  # both runs are real: they are positions
 
-def test_the_measure_reproduces_ybs_own_figures_where_yb_gave_them():
-    """The only check there can be on a figure YB never gave: run measure_missing's own rule over every fix of both samples that
-    DOES carry YB's distance to finish, and read the error against YB. It says two things.
-
-    First, the plain nearest point of the polyline is NOT good enough on the run home. Jean-Luc Van Den Heede came up the
-    Atlantic about 900 nm west of the 2018 course line, and the foot of the perpendicular slides a boat that far off the line up
-    the course without her having sailed there: the plain measure reads up to 319.2 nm LESS than YB for him, 682.9 for Simon
-    Curwen and 326.0 for Kirsten Neuschäfer. Second, the great circle to the finish is a floor no route can be shorter than, and
-    it costs nothing to apply: it cuts Van Den Heede's 95th percentile from 194.9 to 70.0 nm and moves no boat of either sample
-    one metre further from YB.
-
-    What is left is real and is the price of measuring a fix YB left blank: the worst residuals are at the corners of the course,
-    where a polyline's nearest point is discontinuous (course.py). Mark Slats's own missing stretch is the Atlantic run home,
-    where the floor is what answers and the floor agrees with YB to about 2 nm."""
-    plain, floored = {}, {}
-    for race in ("ggr2018", "ggr2022"):
-        line, fin = LINES[race], LINES[race].nodes[-1]
-        for r in editions_data.TEAMS[race]:
-            if r["id"] not in load_sample(race):
-                continue
-            i0, prev, ep, ef = 0, None, [], []
-            for f in editions.cut(sorted(load_sample(race)[r["id"]], key=lambda f: f["at"]), r["ended_at"]):
-                togo, i0 = line.togo(f["lat"], f["lon"], i0, ahead=40 + (int((f["at"] - prev) // (4 * 3600)) if prev is not None else 0))
-                prev = f["at"]
-                if not f.get("dtf"):
-                    continue
-                yb, g = f["dtf"] / 1852.0, gc_nm(f["lat"], f["lon"], fin["lat"], fin["lon"])
-                ep.append(abs(togo - yb)); ef.append(abs(max(togo, g) - yb))
-            if ep:
-                plain[(race, r["id"])], floored[(race, r["id"])] = ep, ef
-    p95 = lambda e: round(sorted(e)[int(0.95 * len(e))], 1)
-    assert all(round(max(floored[k]), 1) <= round(max(plain[k]), 1) for k in plain)             # the floor never moves a figure away from YB
-    assert (p95(plain[("ggr2018", 8)]), round(max(plain[("ggr2018", 8)]), 1)) == (194.9, 319.2)
-    assert (p95(floored[("ggr2018", 8)]), round(max(floored[("ggr2018", 8)]), 1)) == (70.0, 178.1)
-    assert round(max(plain[("ggr2022", 11)]), 1) == 682.9 and round(max(plain[("ggr2022", 7)]), 1) == 326.0
-
-def test_this_years_fleet_is_never_measured_on_a_line():
-    """This year's figures must equal YB's own, as every other page of the site shows them, so prepare measures nothing for a
-    fleet whose grid is the live site's (fill=False) even when a line is at hand: a 2026 fix with no distance to finish is
-    in-port tracker noise, and it stays dropped."""
+def test_this_years_fleet_still_drops_a_fix_without_a_distance():
+    """This year's figures must equal YB's own, as every other page of the site shows them: a 2026 fix with no distance to finish
+    is in-port tracker noise on the first days, and the live grid drops it. Only a past fleet keeps one (prepare's `fill`)."""
     fx = [{"at": START + i * SLOT_S + 7, "lat": 46.5 - i * 20.0 / 60.0, "lon": -1.79, "dtf": 1 if i < 6 else 0} for i in range(13)]
-    b = editions.prepare(fx, START, fill=False, line=LINE)
-    assert b["measured"] == 0 and max(b["slots"]) == slot_of(START + 5 * SLOT_S)
-    assert editions.prepare(fx, START, fill=True, line=LINE)["measured"] == 7                 # a PAST fleet would measure those seven
+    assert max(editions.prepare(fx, START, fill=False)["slots"]) == slot_of(START + 5 * SLOT_S)
+    assert max(editions.prepare(fx, START, fill=True)["slots"]) == slot_of(START + 12 * SLOT_S)
 
 # ---------------------------------------------------------------- the restart
 
@@ -781,7 +738,7 @@ def test_compute_returns_the_three_tables_for_a_small_fleet():
     assert len(out["boat_days"]) == 10 and all(set(db.BOAT_DAY_COLS) <= set(r) for r in out["boat_days"])
     assert all(set(db.DAY_COLS) <= set(d) for d in out["days"])
     assert all(set(db.MILESTONE_COLS) <= set(m) for m in out["milestones"]) and len(out["milestones"]) == 2
-    assert out["notes"] == {"filled_slots": 0, "stopped_legs": 0, "interp_reports": 0, "measured_fixes": {}}
+    assert out["notes"] == {"filled_slots": 0, "stopped_legs": 0, "interp_reports": 0, "unmeasured_boat_days": {}}
     assert {r["team_id"] for r in out["boat_days"]} == {1, 2}
 
 def test_compute_counts_what_it_added_and_what_it_left_out():
@@ -791,20 +748,23 @@ def test_compute_counts_what_it_added_and_what_it_left_out():
     assert out["notes"]["interp_reports"] == 0                                                # 00:00 lies on the 3-hour rhythm and on the grid alike
     assert editions.compute(boats, {}, START, COURSE_NM, days=[1], winds={}, fill=False)["notes"]["filled_slots"] == 0
 
-def test_compute_counts_the_fixes_it_measured_itself_boat_by_boat():
-    """The run's log must name which boats carry a figure of OURS rather than YB's, and how many, so that the page's "Read with
+def test_compute_counts_the_boat_days_that_carry_a_position_but_no_distance():
+    """The run's log must name which boats show water but no miles made good, and on how many days, so that the page's "Read with
     care" can say it. A boat YB gave a distance for on every fix is not in the count at all."""
     fx = straight(START, 20.0, 12)
     for f in fx[7:]:
-        f["dtf"] = 0                                                                          # six reports YB gave no distance to finish
-    out = editions.compute({1: fx, 2: straight(START, 25.0, 12)}, {}, START, COURSE_NM, days=[1, 2], winds={}, fill=True, line=LINE)
-    assert out["notes"]["measured_fixes"] == {1: 6}
-    assert editions.compute({1: fx}, {}, START, COURSE_NM, days=[1], winds={}, fill=False, line=LINE)["notes"]["measured_fixes"] == {}
+        f["dtf"] = 0                                                                          # from the 08:00 report of the second day on
+    out = editions.compute({1: fx, 2: straight(START, 25.0, 12)}, {}, START, COURSE_NM, days=[1, 2], winds={}, fill=True)
+    assert out["notes"]["unmeasured_boat_days"] == {1: 1}                                     # the 00:00 report of race day 2, not of race day 1
+    rows = {r["race_day"]: r for r in out["boat_days"] if r["team_id"] == 1}
+    assert rows[1]["mg_nm"] is not None and rows[1]["place"] is not None                      # the day YB did give her a distance
+    assert rows[2]["fresh"] and rows[2]["mg_nm"] is None and rows[2]["place"] is None and rows[2]["run24_nm"] is not None
+    assert editions.compute({1: fx}, {}, START, COURSE_NM, days=[1, 2], winds={}, fill=False)["notes"]["unmeasured_boat_days"] == {}
 
 def test_compute_stands_up_to_an_empty_fleet_an_empty_day_list_and_a_boat_with_no_fix():
     empty = editions.compute({}, {}, START, COURSE_NM, days=[1], winds={}, fill=True)
     assert len(empty["days"]) == 1 and empty["days"][0]["racing"] == 0 and empty["days"][0]["leader_team_id"] is None
-    assert empty["boat_days"] == [] and empty["notes"] == {"filled_slots": 0, "stopped_legs": 0, "interp_reports": 0, "measured_fixes": {}}
+    assert empty["boat_days"] == [] and empty["notes"] == {"filled_slots": 0, "stopped_legs": 0, "interp_reports": 0, "unmeasured_boat_days": {}}
     assert set(db.DAY_COLS) <= set(empty["days"][0])
     none = editions.compute({1: straight(START, 20.0, 12)}, {}, START, COURSE_NM, days=[], winds={}, fill=True)
     assert none["days"] == [] and none["boat_days"] == []

@@ -5,8 +5,9 @@ alter table team add column if not exists ended_at timestamptz, add column if no
 
 -- One row per race per race day (00:00 UTC of the start date plus N days), the fleet's figures on ITS OWN course: every fleet
 -- keeps YB's own distance to finish, so mg_nm is that race's own course length less that distance, and the race DAY is what the
--- three fleets are compared on. Where YB gave a fix of a PAST race no distance at all, the worker measures it on that race's own
--- course line (editions.measure_missing) rather than lose the report; this year's fleet never is. No column changes with either.
+-- three fleets are compared on. Where YB's record of a PAST race gives a fix no distance at all, the report keeps its position
+-- and every column read off a distance is NULL (mg_nm, togo_nm, place, and that boat is out of the day's leader, median and
+-- last): blank, never guessed. This year's fleet never has such a row. No column changes with the measure.
 create table if not exists edition_day (
   race_key text not null, race_day int not null, as_of timestamptz not null,
   racing int not null, finished int not null, fresh int not null,        -- boats in the race; home; with a fix within 20 min of the report

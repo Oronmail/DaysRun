@@ -88,9 +88,8 @@ def test_2022_imported_from_a_folder_then_its_three_tables(conn, tmp_path, monke
     assert ms["Cape Horn"] == 164 and ms["Finish"] == 235
     assert "Lanzarote" in dict(rows(conn, "select milestone, race_day from edition_milestone where race_key='ggr2022' and team_id=14"))
     assert conn.execute("select count(*) from edition_boat_day where race_key='ggr2022' and team_id=14 and racing").fetchone()[0] == 14   # days 1 to 14
-    assert set(out["notes"]) == {"filled_slots", "stopped_legs", "interp_reports", "measured_fixes"}
-    assert out["notes"]["measured_fixes"] == {}                                               # YB gave every fix of this sample a distance
-    assert seen["line"].total_nm == pytest.approx(setup["course"]["distance"] / 1.852, abs=0.1)   # and it is 2022's own line, for the ones it does not
+    assert set(out["notes"]) == {"filled_slots", "stopped_legs", "interp_reports", "unmeasured_boat_days"}
+    assert out["notes"]["unmeasured_boat_days"] == {}                                         # YB gave every fix of this sample a distance
     assert conn.execute("select count(*) from edition_boat_day where race_key='ggr2022'").fetchone()[0] == 5 * len(days)
 
 def test_2018_imported_from_a_folder_and_the_three_hourly_week_makes_runs(conn, tmp_path):
@@ -101,12 +100,17 @@ def test_2018_imported_from_a_folder_and_the_three_hourly_week_makes_runs(conn, 
     assert len(rows(conn, "select id from team where race_key='ggr2018'")) == 17              # 17 starters; Francesco Cappelletti never crossed the line
     out = run.cmd_editions(conn, "ggr2018", as_of=None)
     assert out["notes"]["filled_slots"] > 0
-    # YB gave Mark Slats no distance to finish from 1 Jan 2019 to his finish; measured on 2018's own course line those 589 fixes
-    # come back, and with them the last month of the race — 179 reports the raw record would have left blank.
-    assert out["notes"]["measured_fixes"] == {68: 589}
-    late = rows(conn, """select race_day from edition_boat_day where race_key='ggr2018' and team_id=68
-                         and race_day between 184 and 214 and not fresh""")
-    assert [d for d, in late] == [211]                                                        # 30 of the 31 reports back; 28 Jan he missed his own
+    # YB gave Mark Slats no distance to finish from 1 Jan 2019 to his finish. Those reports keep their position, so the page shows
+    # where the boat was and what she ran; miles made good and place are blank on every one of them, and nothing is guessed.
+    assert out["notes"]["unmeasured_boat_days"] == {68: 29}                                   # race days 185 to 214, less the 28 Jan report he missed
+    late = rows(conn, """select race_day, fresh, mg_nm is null, place is null, run24_nm is not null from edition_boat_day
+                         where race_key='ggr2018' and team_id=68 and race_day between 184 and 214 order by race_day""")
+    assert [d for d, _, _, _, _ in late] == list(range(184, 215))
+    assert [d for d, fresh, *_ in late if not fresh] == [211]                                 # 30 of the 31 reports; 28 Jan he missed his own
+    assert [d for d, _, blank_mg, _, _ in late if not blank_mg] == [184]                      # YB's last distance is 04:00 on 1 Jan, after that report
+    assert all(no_place for d, _, _, no_place, _ in late if d > 184)                          # no place on a day nobody measured her distance
+    assert [d for d, fresh, _, _, ran in late if fresh and not ran] == [186, 212]             # 28 of the 30 still carry a 24-hour run; two
+                                                                                              # windows are short a report, as the run rule demands
     week = rows(conn, """select race_day, count(run24_nm) from edition_boat_day where race_key='ggr2018' and race_day between 3 and 8
                          group by race_day order by race_day""")
     assert [d for d, _ in week] == [3, 4, 5, 6, 7, 8] and all(n > 0 for _, n in week), week
@@ -163,7 +167,6 @@ def test_2026_writes_the_asked_day_with_ybs_own_distance_to_finish(conn, monkeyp
     for tid, mg in fresh:
         assert abs((course_nm - mg) - golden[tid]["dtf"]) < 0.6, tid
     assert conn.execute("select count(*) from edition_boat_day where race_key='ggr2026'").fetchone()[0] == 16
-    assert seen["line"] is None                                                               # and no course line: a 2026 figure can only be YB's own
     assert conn.execute("select count(*) from split where race_key='ggr2026'").fetchone()[0] == 0   # nothing captured yet, so the count below says nothing
     assert conn.execute("select count(*) from edition_milestone where race_key='ggr2026'").fetchone()[0] == 0
     before = rows(conn, "select * from edition_boat_day where race_key='ggr2026' order by team_id")
@@ -275,10 +278,9 @@ def test_wind_is_fetched_batch_by_batch_at_the_slots_the_legs_use(conn, tmp_path
     assert len(fake.calls) >= 2 and all(len(c) <= 20 for c in fake.calls)
     start = editions_data.EDITIONS["ggr2018"]["start"]
     ends, fixes = db.team_ends(conn, "ggr2018"), db.load_fixes(conn, "ggr2018")
-    _, line = run._measure(conn, "ggr2018", with_line=True)                                   # the same line the import itself used
     want = set()
     for tid, fx in fixes.items():
-        slots = editions.past_slots(fx, start, ends[tid]["ended_at"], line)
+        slots = editions.past_slots(fx, start, ends[tid]["ended_at"])
         want |= {(tid, editions.slot_time(k)) for k in slots if k - 1 in slots and editions.race_day_of(editions.slot_time(k), start) <= 4}
     got = {(tid, int(at)) for tid, at in conn.execute("select team_id, extract(epoch from slot_at)::bigint from edition_wind where race_key='ggr2018'")}
     assert got == want and got
