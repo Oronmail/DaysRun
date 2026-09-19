@@ -191,7 +191,7 @@ export default async function Page() {
 
     {/* Milestones: the marks that mean the same thing in every fleet. */}
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div className="rule-title"><div className="label">Milestones</div><div className="small" style={{ fontStyle: "italic" }}>the race day of the first boat, its date, and the day the middle of the fleet passed</div></div>
+      <div className="rule-title"><div className="label">Milestones</div><div className="small" style={{ fontStyle: "italic" }}>the race day of the first boat, its date, and the day half the starters were past</div></div>
       <div className="table-scroll"><table className="data">
         <thead><tr><th>Milestone</th>{YEARS.map(y => <th key={y} colSpan={3} style={{ color: YEAR_TEXT[y], textAlign: "center" }}>{YEAR_LABEL[y]} · started {dayMon(START_AT[y])}</th>)}</tr>
           <tr><th /> {YEARS.flatMap(y => [<th key={`${y}f`}>First boat</th>, <th key={`${y}m`} className="r two">Half the fleet past</th>, <th key={`${y}p`} className="r">Boats past</th>])}</tr></thead>
