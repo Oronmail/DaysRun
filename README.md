@@ -4,7 +4,7 @@ Unofficial statistics for the Golden Globe Race 2026, built by a GGR-enthusiast 
 
 The race tracker shows where each boat is. Day's Run works on the history behind the positions: runs over 4 hours, 24 hours and 7 days, places gained and lost, the gap to the ghosts of past editions, speed for the wind each boat has, points of sail, records, sprints, and the conditions at every boat.
 
-Live at https://daysrun.vercel.app (a private preview while it is being built).
+Live at https://daysrun.net (a private preview while it is being built).
 Positions: YB Tracking. Weather: Open-Meteo, CC BY 4.0. To follow the boats live, use the race's own tracker: https://goldengloberace.com/live-tracker/
 
 Nothing on this site may be relayed to a competitor (NOR F.8.2).
