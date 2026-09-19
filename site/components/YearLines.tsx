@@ -5,8 +5,9 @@ export type YearLine = { color: string; width?: number; dash?: boolean; gold?: b
 export function scale(width: number, height: number, xmax: number, ymax: number, R: number) {
   const L = 52, T = 14, B = 28, pw = width - L - R, ph = height - T - B;
   // A value past ymax (2022's leader can pass this year's course-length axis) holds at the top of the box rather than
-  // let its point escape it: the chart is clipped, never a line drawn above its own frame.
-  return { X: (x: number) => L + x / xmax * pw, Y: (y: number) => T + (ymax - Math.min(y, ymax)) / ymax * ph, L, pw };
+  // let its point escape it, and a value below nought holds at the baseline the same way: a boat that turned back to the
+  // start has negative miles made good for days (Damien, 2022), and the chart is clipped at BOTH edges of its frame.
+  return { X: (x: number) => L + x / xmax * pw, Y: (y: number) => T + (ymax - Math.min(Math.max(y, 0), ymax)) / ymax * ph, L, pw };
 }
 // A line's own data decides where it stops (a race still being sailed is a short line, not one stretched to xmax); points
 // past xmax are dropped, never drawn past the chart's right edge.
@@ -18,9 +19,19 @@ export function clip(pts: [number, number][], xmax: number): [number, number][] 
 export function endedStyle(color: string, gold?: boolean): { stroke: string; weight: number; fill: string } {
   return gold ? { stroke: "var(--gold-edge)", weight: 600, fill: "var(--gold-text)" } : { stroke: color, weight: 500, fill: color };
 }
+/** Where an ✕'s label goes. It sits under the ✕ (over it near the foot of the box), and drops a line clear when another line's
+ *  own end label is close enough to overprint it — on a card of a short race the two markers can land within a few pixels
+ *  ("2026" over "✕ day 14" on Guy's card). `ends` are the other lines' end points, in the chart's own units. */
+export function endedLabelY(x: number, y: number, height: number, ends: [number, number][]): number {
+  const clash = ends.some(([ex, ey]) => Math.abs(ex - x) < 46 && Math.abs(ey - y) < 16);
+  const low = y > height - 50;
+  return low ? y - (clash ? 20 : 7) : y + (clash ? 27 : 15);
+}
 export default function YearLines({ lines, xmax, ymax, yticks, xticks, width = 640, height = 300, R = 64, ylab = (v: number) => Math.round(v).toLocaleString("en-US"), xlab = (x: number) => `d${x}` }:
   { lines: YearLine[]; xmax: number; ymax: number; yticks: number[]; xticks: number[]; width?: number; height?: number; R?: number; ylab?: (v: number) => string; xlab?: (x: number) => string }) {
   const { X, Y, L, pw } = scale(width, height, xmax, ymax, R);
+  // Where every LABELLED end marker sits, so that an ✕'s label below can step clear of one instead of printing over it.
+  const ends: [number, number][] = lines.flatMap(l => { const pts = clip(l.pts, xmax); return l.end && pts.length ? [[X(pts[pts.length - 1][0]), Y(pts[pts.length - 1][1])] as [number, number]] : []; });
   return <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
     {yticks.map(v => <g key={v}><line x1={L} y1={Y(v)} x2={L + pw} y2={Y(v)} stroke={v === 0 ? "var(--graphite)" : "var(--hair)"} /><text x={L - 8} y={Y(v) + 4} textAnchor="end" fontFamily={MONO} fontSize={10} fill="var(--graphite)">{ylab(v)}</text></g>)}
     {xticks.map(x => <text key={x} x={X(x)} y={height - 8} textAnchor="middle" fontFamily={MONO} fontSize={10} fill="var(--graphite)">{xlab(x)}</text>)}
@@ -32,7 +43,7 @@ export default function YearLines({ lines, xmax, ymax, yticks, xticks, width = 6
         {l.gold && <path d={d} fill="none" stroke="var(--gold-edge)" strokeWidth={w + 1.3} strokeLinejoin="round" strokeLinecap="round" strokeDasharray={l.dash ? "5 4" : undefined} />}
         <path d={d} fill="none" stroke={l.color} strokeWidth={w} strokeLinejoin="round" strokeDasharray={l.dash ? "5 4" : undefined} />
         {l.end && <><circle cx={X(ex)} cy={Y(ey)} r={l.gold ? 4.5 : 4} fill={l.color} stroke={l.gold ? "var(--gold-edge)" : "var(--panel)"} strokeWidth={l.gold ? 1.4 : 2} /><text x={X(ex) + 9} y={Y(ey) + 4} fontFamily={MONO} fontSize={10} fontWeight={l.gold ? 600 : 500} fill={l.gold ? "var(--gold-text)" : l.color} className="map-halo">{l.end}</text></>}
-        {l.ended && (() => { const es = endedStyle(l.color, l.gold); return <><path d={`M${X(ex) - 4},${Y(ey) - 4} L${X(ex) + 4},${Y(ey) + 4} M${X(ex) - 4},${Y(ey) + 4} L${X(ex) + 4},${Y(ey) - 4}`} stroke={es.stroke} strokeWidth={2.2} /><text x={X(ex) + 8} y={Y(ey) > height - 50 ? Y(ey) - 7 : Y(ey) + 15} fontFamily={MONO} fontSize={10} fontWeight={es.weight} fill={es.fill} className="map-halo">{l.ended}</text></>; })()}
+        {l.ended && (() => { const es = endedStyle(l.color, l.gold); return <><path d={`M${X(ex) - 4},${Y(ey) - 4} L${X(ex) + 4},${Y(ey) + 4} M${X(ex) - 4},${Y(ey) + 4} L${X(ex) + 4},${Y(ey) - 4}`} stroke={es.stroke} strokeWidth={2.2} /><text x={X(ex) + 8} y={endedLabelY(X(ex), Y(ey), height, ends)} fontFamily={MONO} fontSize={10} fontWeight={es.weight} fill={es.fill} className="map-halo">{l.ended}</text></>; })()}
       </g>; })}
   </svg>;
 }

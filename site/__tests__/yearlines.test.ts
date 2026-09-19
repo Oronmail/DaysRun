@@ -2,7 +2,7 @@
 // edges of the box, its gold treatment on the "ended" marker, and the ocean chart's shared graticule labels (the DOM itself is
 // judged by looking at the chart, not by this file).
 import { describe, it, expect } from "vitest";
-import { scale, clip, endedStyle } from "../components/YearLines";
+import { scale, clip, endedStyle, endedLabelY } from "../components/YearLines";
 import { latLabel, lonLabel } from "../lib/geo";
 
 describe("a year line's axes", () => {
@@ -40,5 +40,27 @@ describe("the ocean chart's graticule labels (shared by FleetMap and PointsChart
     expect(latLabel(34)).toBe("34°N");
     expect(lonLabel(18)).toBe("18°E");
     expect(lonLabel(-18)).toBe("18°W");
+  });
+});
+
+describe("the floor of the chart's box", () => {
+  it("holds a negative value at the baseline instead of drawing it under the frame (a boat sailing back to the start)", () => {
+    // Damien's 2022: he turned back to Les Sables-d'Olonne, and his miles made good went negative for days.
+    const { Y } = scale(320, 210, 30, 3600, 44);
+    expect(Y(-120)).toBe(Y(0));
+    expect(Y(0)).toBe(210 - 28);
+  });
+});
+
+describe("where an ended ✕ puts its label", () => {
+  it("sits under the ✕ when nothing else is there", () => {
+    expect(endedLabelY(200, 100, 210, [])).toBe(115);
+  });
+  it("drops clear when another line's end label is close enough to overprint it (Guy's card: 2026 against ✕ day 14)", () => {
+    expect(endedLabelY(200, 100, 210, [[206, 104]])).toBe(127);
+  });
+  it("goes above the ✕ near the foot of the chart, and further above it when a label is there too", () => {
+    expect(endedLabelY(200, 190, 210, [])).toBe(183);
+    expect(endedLabelY(200, 190, 210, [[200, 190]])).toBe(170);
   });
 });
