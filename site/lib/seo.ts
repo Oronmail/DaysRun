@@ -12,10 +12,6 @@ export type Words = { title: string; description: string };
 export const PAGES: Record<string, Words> = {
   "/": { title: `${SITE_NAME} · unofficial statistics for the ${RACE}`,
     description: "Places, 24-hour runs, records, duels and a ghost race against past winners, from every 4-hour position report. Unofficial and fan-made; not affiliated with the race." },
-  "/w/4h": { title: `The fleet, last 4 hours · ${RACE} · ${SITE_NAME}`,
-    description: `The ranking by distance to finish, with the average speed of every boat on the latest 4-hour leg. Unofficial statistics for the ${RACE}.` },
-  "/w/7d": { title: `The fleet, last 7 days · ${RACE} · ${SITE_NAME}`,
-    description: `The ranking by distance to finish, with the miles every boat sailed in the last 7 days. Unofficial statistics for the ${RACE}.` },
   "/skippers": { title: `The skippers · ${RACE} · ${SITE_NAME}`,
     description: `A page for every skipper of the ${RACE}: track, average speed on each 4-hour leg, daily runs, place day by day, ghosts. Unofficial statistics.` },
   "/ghosts": { title: `Ghost race against past voyages · ${SITE_NAME}`,
@@ -36,6 +32,8 @@ export const PAGES: Record<string, Words> = {
     description: `The designs of the ${RACE} compared: best place, median speed over 7 days, speed for the model wind upwind, reaching and running. Unofficial.` },
   "/conditions": { title: `Model wind and waves at each boat · ${SITE_NAME}`,
     description: `Model wind, gusts, waves, swell, current and pressure where each boat of the ${RACE} is, from Open-Meteo. Model values, not measured. Unofficial.` },
+  "/data": { title: `Data: every number as an Excel file · ${SITE_NAME}`,
+    description: `The statistics of the ${RACE} to download: an Excel workbook per month of the race, with a row per boat per day and per 4-hour report. Unofficial.` },
   "/method": { title: `Method and glossary: how the numbers are made · ${SITE_NAME}`,
     description: `What every figure means and how it is computed: the 4-hour grid, runs, records, ghosts, model wind, sources. Unofficial statistics for the ${RACE}.` },
 };

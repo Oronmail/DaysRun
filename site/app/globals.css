@@ -85,7 +85,12 @@ main svg[viewBox] { max-width: 100%; height: auto; }
 .narrow-only { display: none; } .wide-only-inline { display: inline; }
 @media (max-width: 1699px) { .wide-only { display: none; } .wide-only-inline { display: none; } .narrow-only { display: block; }
   .table-scroll table.data th, .table-scroll table.data td { padding-left: 5px; padding-right: 5px; } }   /* a pixel a side: at 1,440 px the ranking was 4 px too wide */
-@media (max-width: 1439px) { .table-scroll { overflow-x: auto; max-width: 100%; } }
+@media (max-width: 1499px) { .table-scroll { overflow-x: auto; max-width: 100%; }
+  /* 1,440 px is the commonest laptop, and the ranking should stand on it whole: a pixel less padding a side and the 7-day bars
+     drawn 84 px wide instead of 126 (its title on two lines) give back the 43 px the 7-day run took (19 Sep 2026). Below that the table scrolls in its box. */
+  .table-scroll table.data th, .table-scroll table.data td { padding-left: 4px; padding-right: 4px; }
+  .table-scroll table.data svg.speedbars { width: 84px; }                 /* two whole pixels a leg, so the bars stay crisp */
+  .table-scroll table.data th.two { min-width: 52px; } }   /* 1,439 until 19 Sep 2026: with the 7-day run a column of its own the ranking needs 963 px, which its column has from a 1,483 px screen */
 
 /* Hover (and tap) boxes over server-drawn charts: no script. A target (.pt) is an HTML element placed in % over the SVG inside
    .tipwrap; its box (.tipbox) shows on :hover and :focus. One look for every chart on the site. */

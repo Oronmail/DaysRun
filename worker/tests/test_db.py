@@ -1,7 +1,7 @@
 # worker/tests/test_db.py
 import gzip, json, os, pathlib
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 FIX = pathlib.Path(__file__).parent / "fixtures"
 URL = os.getenv("DATABASE_URL_TEST")
@@ -221,3 +221,30 @@ def test_the_class_comes_from_ybs_own_tag_and_the_override_only_stands_in_until_
     assert cls(5, [84200], {5: "Chichester"}) == "Chichester"          # the override stands in
     assert cls(5, [84200, 84707], {5: "Chichester"}) == "Chichester"   # and agrees once YB says it
     assert cls(1, [84200], {5: "Chichester"}) == "Suhaili"             # it names one boat and no other
+
+def test_export_view_gathers_a_day_for_the_data_files(conn):
+    """The view behind the data files (site/app/data): a day's six legs, how many are whole, whether the run crossed a silence,
+    where the 24 hours began, the day's model wind. It gathers; what is blanked for a boat without a current fix is the site's job."""
+    T = datetime(2026, 9, 17, 0, 0, tzinfo=timezone.utc)
+    conn.execute("insert into race (key, title, start_at) values ('ggr2026', 'GGR 2026', '2026-09-06 12:30+00')")
+    conn.execute("insert into team (race_key, id, name, first_name, yacht, model, country_code) values ('ggr2026', 8, 'Selim Yalcin', 'Selim', 'Help Disabled Children', 'Endurance 35', 'TUR')")
+    for k in range(7):                                                # seven reports, 24 h apart end to end; the one 8 h before T was missed
+        at = T - timedelta(hours=4 * k); stale = k == 2
+        fix_at = at - timedelta(hours=4) if stale else at + timedelta(seconds=15)
+        conn.execute("insert into boat_stat (race_key, team_id, as_of, rank, dtf_nm, last_fix_at, stale, lat, lon, run24_nm, run24_bridged) values ('ggr2026', 8, %s, 16, %s, %s, %s, %s, -10, 126.3, %s)",
+                     (at, 25000 + 20 * k, fix_at, stale, 38 + 0.3 * k, k == 0))
+        if k not in (1, 2):                                           # a missed report leaves no leg on either side of it
+            conn.execute("insert into leg (race_key, team_id, end_slot, dist_nm, speed_kn) values ('ggr2026', 8, %s, 20, %s)", (at, 5 + k / 10))
+        if k in (0, 3, 5):                                            # the weather service answered for three of the reports
+            conn.execute("insert into conditions (race_key, team_id, fix_at, wind_kn) values ('ggr2026', 8, %s, %s)", (fix_at, 20 + k))
+    conn.commit()
+    row = conn.execute("""select closes_day, skipper, design, leg1_kn, leg2_kn, leg3_kn, leg4_kn, leg5_kn, leg6_kn, legs_complete,
+                                 start_lat, start_dtf_nm - dtf_nm, round(wind_mean_kn::numeric, 2)::float, wind_max_kn, wind_reports, wind_kn, leg_kn, run24_bridged
+                          from export_report where race_key = 'ggr2026' and team_id = 8 and as_of = %s""", (T,)).fetchone()
+    assert row[:3] == (True, "Selim Yalcin", "Endurance 35")
+    assert row[3:10] == (5.5, 5.4, 5.3, None, None, 5.0, 4)          # oldest first; the two legs round the missed report are blank
+    assert row[10:12] == (39.8, 120)                                  # the fix 24 hours earlier; made good = the fall in distance to finish
+    assert row[12:15] == (22.67, 25, 3) and row[15:] == (20, 5.0, True)   # the day's model wind from the reports that have one; this report's own; the run crossed the silence
+    missed = conn.execute("select closes_day, stale, legs_complete from export_report where team_id = 8 and as_of = %s", (T - timedelta(hours=8),)).fetchone()
+    assert missed == (False, True, 4)                                 # the view gathers; blanking a boat without a current fix is the site's job
+    assert conn.execute("select has_table_privilege('anon', 'export_report', 'select')").fetchone()[0] is True

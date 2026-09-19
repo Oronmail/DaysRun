@@ -1,5 +1,5 @@
-// site/components/FleetPage.tsx — the Fleet page body, shared by / (last 24 h), /w/4h and /w/7d so that all three stay
-// statically rendered; reading ?w= from searchParams would make the page render on every request.
+// site/components/FleetPage.tsx — the Fleet page body. Until 19 Sep 2026 it was shared by / and two addresses, /w/4h and /w/7d, that swapped
+// one column of the ranking; the table now carries all three paces at once and both addresses redirect here (next.config.ts).
 import Link from "next/link";
 import Shell from "@/components/Shell";
 import Dateline from "@/components/Dateline";
@@ -16,9 +16,7 @@ import Duels from "@/components/Duels";
 import { latestFleet, boatStats, raceSetup, eventsRecent, dailyPlaces, duelsAt, boatPerf } from "@/lib/db";
 import { nm, hhmm, dayMon, dayMonTime } from "@/lib/format";
 
-export type Win = "4h" | "24h" | "7d";
-const WINS: [Win, string, string][] = [["24h", "Last 24 h", "/"], ["4h", "Last 4 h", "/w/4h"], ["7d", "Last 7 days", "/w/7d"]];
-export default async function FleetPage({ window = "24h" }: { window?: Win }) {
+export default async function FleetPage() {
   const fleet = await latestFleet();
   const [boats, setup, events, days, duels, perf] = await Promise.all([boatStats(fleet.as_of), raceSetup(), eventsRecent(6), dailyPlaces(), duelsAt(fleet.as_of), boatPerf(fleet.as_of)]);
   const wind = new Map(perf.map(p => [p.team_id, p]));
@@ -37,9 +35,10 @@ export default async function FleetPage({ window = "24h" }: { window?: Win }) {
     ]} />
     <div className="grid2">
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div className="rule-title"><div className="label">Ranking by distance to finish</div><div className="small only-desktop" style={{ fontStyle: "italic", marginRight: "auto", paddingLeft: 12 }}>select a skipper for the full analysis</div><div style={{ fontSize: 13 }}>{WINS.map(([w, label, href], i) => <span key={w}>{i > 0 && " · "}{w === window ? <strong>{label}</strong> : <Link href={href}>{label}</Link>}</span>)}</div></div>
-        <div className="only-desktop table-scroll"><RankingTable boats={rows} window={window} /></div>
-        <div className="only-phone"><RankingList boats={rows} window={window} /></div>
+        <div className="rule-title"><div className="label">Ranking by distance to finish</div><div className="small only-desktop" style={{ fontStyle: "italic", marginRight: "auto", paddingLeft: 12 }}>select a skipper for the full analysis</div></div>
+        <div className="only-desktop table-scroll"><RankingTable boats={rows} /></div>
+        <div className="only-phone"><RankingList boats={rows} /></div>
+        <div className="small only-desktop" style={{ paddingTop: 4 }}>Every number on this page, day by day and report by report, as an Excel file: <a href="/data">Data</a></div>
         <div className="small" style={{ fontSize: 12 }}>{BARS_LEGEND}{bestRun && ` · ${bestRun.team.first_name} sailed the fleet's longest run of the last 24 hours`}</div>
       </div>
       <aside style={{ display: "flex", flexDirection: "column", gap: 28 }}>

@@ -1,6 +1,7 @@
 // site/lib/db.ts — read-only access through the anon key; RLS allows select only.
 import { cache } from "react";
 import { createClient } from "@supabase/supabase-js";
+import type { ExportRaw } from "./export-columns";
 export const RACE = process.env.NEXT_PUBLIC_RACE_KEY ?? "ggr2026";
 export const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
 
@@ -148,4 +149,11 @@ export async function editionMilestones(): Promise<EditionMilestone[]> {
 }
 export async function teamsOf(raceKey: string): Promise<PastTeam[]> {
   return ok(await supabase.from("team").select("*").eq("race_key", raceKey).eq("is_ghost", false).order("id"));
+}
+
+// The data files of the Data page (lib/export.ts, lib/export-columns.ts): rows of the view export_report, one per boat per report.
+// Paged like every unbounded read: a whole month is about 3,000 rows, over the 1,000 a Supabase request returns.
+const exportQuery = () => supabase.from("export_report").select("*").eq("race_key", RACE);
+export async function exportReports(after: string, upTo: string): Promise<ExportRaw[]> {
+  return allRows((a, b) => exportQuery().gt("as_of", after).lte("as_of", upTo).order("as_of").order("rank").order("team_id").range(a, b));
 }
