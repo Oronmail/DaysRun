@@ -76,18 +76,28 @@ def test_the_forward_search_widens_after_a_long_silence():
     assert abs(fell(editions.on_line([{"at": START, "lat": 46.5, "lon": -1.79, "dtf": 1}, far], line)) - 30.0) < 0.5
     assert fell(editions.on_line([{"at": START, "lat": 46.5, "lon": -1.79, "dtf": 1}, near], line)) < 25.0   # the window cannot reach
 
-def test_distance_to_finish_outruns_the_boat_only_at_a_bend_and_where_2018_never_rounded_trindade():
+def test_distance_to_finish_outruns_the_boat_only_at_a_bend_or_where_2018_cut_this_years_trindade_corner():
     """Amendment 7's invariant, on every fix of both real samples: the distance to finish must not fall by more than the boat
-    sailed between the two fixes, plus 5 nm. Measured, 77 of 11,252 pairs break it, and 75 sit where the 2026 course line turns
-    and the boat cuts the bend — the hairpin round Lanzarote, the way into and out of Storm Bay, the corner waypoints of the
-    Southern Ocean, Cape Horn — where advancing along the line honestly outruns the great circle; the median excess is 16 nm.
-    THE TWO BIG ONES ARE NOT A FAULT TO BE TUNED AWAY. The 2018 course had no Trindade: Jean-Luc Van Den Heede and Are Wiig
-    sailed down the African side at 16°W while the 2026 course dog-legs out to 29°W and back, so each rejoins the line a thousand
-    miles further on in a single step. Their total is right again afterwards (all four finishers of the samples end within 3 nm of
-    the finish); only that one race day's miles made good is absurd. A narrower search window does not mend it — measured with 4
-    legs ahead instead of 40, the same jump arrives in twelve smaller ones — because it is the two courses differing, not the
-    search. Whether a past fleet should be measured against Trindade at all is the owner's decision and has a task of its own;
-    this test is the alarm that will ring when it is taken, so pin the numbers, never soften them."""
+    sailed between the two fixes, plus 5 nm. This test is the alarm for the Trindade measure, and it has rung once.
+
+    THE TWO BIG ONES WERE REMOVED BY THE SWEPT-BEARING MEASURE ON 19 SEP 2026 (course.CORNERS, test_trindade.py). They were
+    Jean-Luc Van Den Heede's 1,173.2 nm and Are Wiig's 984.7 nm, each a single four-hour leap across the corner's bisector where
+    the nearest point of the polyline flips from one arm of the Trindade dog-leg to the other. Before the rule, 77 of 11,252 pairs
+    broke the invariant, the median excess 16.4 nm; after it, 217 do, the median excess 10.4 nm and the largest 80.1 nm.
+
+    THE COUNT ROSE AND THAT IS THE RULE WORKING, NOT FAILING. 2022 is untouched, the same 47 pairs as before — every boat of that
+    fleet left Trindade to port as NOR C.1.3 requires, which puts her on the convex side of the corner, where the rule does not
+    reach. 2018's 30 became 170 because eight of those boats sailed 545 to 865 nm INSIDE this year's dog-leg: across it they now
+    make good about 200 nm a day against about 140 sailed, for a fortnight. That is not miles invented, it is what cutting a
+    corner means — the 2018 route down the eastern Atlantic really was shorter than this year's — and it is why straight_pct reads
+    under 100 % for those boats over those days. Each excess is small; the fleet's whole run of them is bounded below.
+
+    WHAT IS LEFT, AND IS DELIBERATE. The largest fall over 100 nm is now Are Wiig's 189.2 nm across a 26.3-hour silence in which
+    she sailed 118.8 — a long gap, not a step. The largest excess in the samples is Kirsten Neuschäfer's 80.1 nm at the Storm Bay
+    gate, a 1-hour leg where the course doubles back on itself, identical under both measures. On the WHOLE 2018 fleet (which
+    these samples do not carry) the largest remaining anomaly is 243.2 nm — Istvan Kopar, 18 Dec 2018, 52°15'S 111°42'W, the same
+    disease at a different concave bend in the South Pacific. It is NOT fixed here and that is on purpose: node 343 needs a range
+    bound, and every range bound measured introduced a worse discontinuity of its own. Pin the numbers, never soften them."""
     bad = []
     for race in ("ggr2018", "ggr2022"):
         for tid, b in prepared(race).items():
@@ -95,8 +105,10 @@ def test_distance_to_finish_outruns_the_boat_only_at_a_bend_and_where_2018_never
                 fell, ran = (p["dtf"] - q["dtf"]) / 1852.0, gc_nm(p["lat"], p["lon"], q["lat"], q["lon"])
                 if fell > ran + 5.0:
                     bad.append((race, tid, hhmm(q["at"]), round(fell, 1), round(ran, 1)))
-    assert [b[:3] for b in bad if b[3] > 100] == [("ggr2018", 8, "2018-08-04 04:00"), ("ggr2018", 7, "2018-08-07 20:00")], bad
-    assert len(bad) == 77, [b for b in bad if b[3] <= 100]
+    assert [b[:3] for b in bad if b[3] > 100] == [("ggr2018", 7, "2018-08-13 22:17")], bad     # a 26.3-hour silence, not a jump
+    assert len(bad) == 217, [b for b in bad if b[3] <= 100]
+    assert [sum(1 for b in bad if b[0] == race) for race in ("ggr2018", "ggr2022")] == [170, 47]   # 2022 unchanged, to the pair
+    assert round(max(b[3] - b[4] for b in bad), 1) == 80.1                                     # Storm Bay, and the same today
 
 # ---------------------------------------------------------------- one boat's day
 
