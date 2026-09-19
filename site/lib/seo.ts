@@ -34,6 +34,8 @@ export const PAGES: Record<string, Words> = {
     description: `The designs of the ${RACE} compared: best place, median speed over 7 days, speed for the model wind upwind, reaching and running. Unofficial.` },
   "/conditions": { title: `Model wind and waves at each boat · ${SITE_NAME}`,
     description: `Model wind, gusts, waves, swell, current and pressure where each boat of the ${RACE} is, from Open-Meteo. Model values, not measured. Unofficial.` },
+  "/data": { title: `Data: every number as an Excel file · ${SITE_NAME}`,
+    description: `The statistics of the ${RACE} to download: an Excel workbook per month of the race, with a row per boat per day and per 4-hour report. Unofficial.` },
   "/method": { title: `Method and glossary: how the numbers are made · ${SITE_NAME}`,
     description: `What every figure means and how it is computed: the 4-hour grid, runs, records, ghosts, model wind, sources. Unofficial statistics for the ${RACE}.` },
 };
