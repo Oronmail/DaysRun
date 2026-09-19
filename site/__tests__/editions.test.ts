@@ -44,6 +44,11 @@ describe("series", () => {
     const days = [day("ggr2018", 1, { median_mg_nm: 60 }), day("ggr2018", 2, { median_mg_nm: null }), day("ggr2018", 3, { median_mg_nm: 180 })];
     expect(series(days, "ggr2018", "median_mg_nm", 3)).toEqual([[0, 0], [1, 60], [3, 180]]);
   });
+  it("does NOT stop the day-run or the wind line at a finish — only the whole-race lines (leader's, middle's) do", () => {
+    const days = [day("ggr2018", 100, { mean_run_nm: 130, wind_kt: 10 }), day("ggr2018", 101, { mean_run_nm: 140, wind_kt: 11, finished: 1 }), day("ggr2018", 102, { mean_run_nm: 150, wind_kt: 12 })];
+    expect(series(days, "ggr2018", "mean_run_nm", 200).map(p => p[0])).toEqual([100, 101, 102]);
+    expect(series(days, "ggr2018", "wind_kt", 200).map(p => p[0])).toEqual([100, 101, 102]);
+  });
 });
 
 describe("milestonesAsOf", () => {
@@ -83,10 +88,24 @@ describe("words", () => {
     const silent = pointTip({ ...b, fresh: false, run24_nm: null, mg_nm: null, place: null }, { name: "Philippe Péché", first_name: null, yacht: "PRB", model: "Rustler 36" }, 16);
     expect(silent.lines[2]).toBe("missed the 00:00 report: last position shown");
   });
-  it("says no position rather than guessing one, when the worker sent none", () => {
-    const b: EditionBoatDay = { race_key: "ggr2018", team_id: 85, race_day: 12, as_of: "2018-07-13T00:00:00+00:00", racing: true, finished: false, fresh: true, fix_at: null, lat: null, lon: null, position_text: null, togo_nm: null, mg_nm: 1405, sailed_nm: null, run24_nm: null, best24_nm: null, best24_at: null, place: 1 };
+  it("says finished for a stale row that came home — she is in port, not silent", () => {
+    const b: EditionBoatDay = { race_key: "ggr2018", team_id: 8, race_day: 212, as_of: "2019-01-30T00:00:00+00:00", racing: false, finished: true, fresh: false, fix_at: "2019-01-29T09:12:00+00:00", lat: 46.4966, lon: -1.7833, position_text: "46°29.8′N 001°47.0′W", togo_nm: 0, mg_nm: null, sailed_nm: null, run24_nm: null, best24_nm: null, best24_at: null, place: 1 };
+    const tip = pointTip(b, { name: "Jean-Luc Van Den Heede", first_name: null, yacht: "Matmut", model: "Rustler 36" }, 17);
+    expect(tip.title).toBe("Jean-Luc Van Den Heede · 2018");
+    expect(tip.lines).toEqual(["Matmut · Rustler 36", "46°29.8′N 001°47.0′W", "finished"]);
+  });
+  it("says out of the race for a stale row that neither races, nor finished, nor answered the report", () => {
+    const b: EditionBoatDay = { race_key: "ggr2018", team_id: 94, race_day: 5, as_of: "2018-07-07T00:00:00+00:00", racing: false, finished: false, fresh: false, fix_at: "2018-07-06T00:00:00+00:00", lat: 43.3623, lon: -8.4115, position_text: "43°21.7′N 008°24.7′W", togo_nm: null, mg_nm: null, sailed_nm: null, run24_nm: null, best24_nm: null, best24_at: null, place: null };
+    const tip = pointTip(b, { name: "Ertan Beskardes", first_name: "Ertan", yacht: "Lazy Otter", model: "Rustler 36" }, 18);
+    expect(tip.title).toBe("Ertan Beskardes · 2018");
+    expect(tip.lines).toEqual(["Lazy Otter · Rustler 36", "43°21.7′N 008°24.7′W", "out of the race"]);
+  });
+  // A fresh row always carries a fix (editions.py: "fresh" IS having one), so "no position" is only ever reached on a STALE
+  // row where the archive has no fix at all — a rare gap, not the common no-report case, which still shows the last position.
+  it("says no position rather than guessing one, for the rare archived row with no fix at all", () => {
+    const b: EditionBoatDay = { race_key: "ggr2018", team_id: 85, race_day: 40, as_of: "2018-08-10T00:00:00+00:00", racing: true, finished: false, fresh: false, fix_at: null, lat: null, lon: null, position_text: null, togo_nm: null, mg_nm: null, sailed_nm: null, run24_nm: null, best24_nm: null, best24_at: null, place: null };
     const tip = pointTip(b, { name: "Philippe Péché", first_name: null, yacht: "PRB", model: "Rustler 36" }, 16);
-    expect(tip.lines[1]).toBe("no position");
+    expect(tip.lines).toEqual(["PRB · Rustler 36", "no position", "missed the 00:00 report: last position shown"]);
   });
   it("turns a day's legs into shares that add to 100", () => {
     expect(windShares(day("ggr2026", 12))).toEqual({ upwind: 14, reaching: 15, running: 71 });
@@ -102,24 +121,55 @@ describe("words", () => {
     expect(s.lead).toBe("On day 12 Damien is 376 nm ahead of where 2022’s leader was, and 133 nm ahead of 2018’s.");
     expect(s.middle).toBe("The middle of this fleet is 231 nm ahead of 2022’s and 6 nm behind 2018’s.");
   });
+  it("drops the 2018 clause when only 2022 is given, without a trailing 'leader was' it never earned", () => {
+    const s = takeaways({ now: day("ggr2026", 12), y2022: day("ggr2022", 12, { leader_mg_nm: 1143, median_mg_nm: 981 }), leaderFirst: "Damien" });
+    expect(s.lead).toBe("On day 12 Damien is 376 nm ahead of where 2022’s leader was.");
+    expect(s.middle).toBe("The middle of this fleet is 231 nm ahead of 2022’s.");
+  });
+  it("drops the 2022 clause when only 2018 is given", () => {
+    const s = takeaways({ now: day("ggr2026", 12), y2018: day("ggr2018", 12, { leader_mg_nm: 1386, median_mg_nm: 1218 }), leaderFirst: "Damien" });
+    expect(s.lead).toBe("On day 12 Damien is 133 nm ahead of 2018’s.");
+    expect(s.middle).toBe("The middle of this fleet is 6 nm behind 2018’s.");
+  });
+  it("says only where the leader stands, and leaves the middle sentence empty, once both past races are behind this year's course", () => {
+    const s = takeaways({ now: day("ggr2026", 278), leaderFirst: "Damien" });
+    expect(s.lead).toBe("On day 278 Damien is leading.");
+    expect(s.middle).toBe("");
+  });
 });
 
 describe("the duplicated lists stay identical to the worker's own", () => {
   const py = fs.readFileSync(path.join(__dirname, "../../worker/ggrstats/editions_data.py"), "utf8");
-  it("holds VETERAN_HULLS to the count and the strings the Python source carries", () => {
-    const count = (py.match(/"yacht_2026"/g) ?? []).length;
-    expect(count).toBe(7);
-    expect(VETERAN_HULLS.length).toBe(7);
+  // Each list is sliced out of the source first (up to ITS OWN closing "]" on its own line — the inner "races" arrays never
+  // close on a line by themselves) so a check can't accidentally pass against the OTHER list: both carry a "team_2026" key,
+  // and the same skipper (Ertan, id 17) appears in both RETURNING (this race) and VETERAN_HULLS (Miss Beagle's 2018 record).
+  const veteranBlock = py.match(/VETERAN_HULLS = \[([\s\S]*?)\n\]/)?.[1];
+  const returningBlock = py.match(/RETURNING = \[([\s\S]*?)\n\]/)?.[1];
+  if (veteranBlock == null || returningBlock == null) throw new Error("could not find VETERAN_HULLS or RETURNING in the Python source — the drift guard cannot run blind");
+
+  it("holds VETERAN_HULLS — count, boat, design, source, and every past race's boat name and note — to the Python source", () => {
+    const count = (veteranBlock.match(/"yacht_2026"/g) ?? []).length;
+    expect(VETERAN_HULLS.length).toBe(count);   // the count itself is Python-derived, not a second hardcoded number
     for (const h of VETERAN_HULLS) {
-      expect(py).toContain(`"yacht_2026": "${h.yacht_2026}"`);
+      expect(veteranBlock).toContain(`"yacht_2026": "${h.yacht_2026}"`);
+      expect(veteranBlock).toContain(`"team_2026": ${h.team_2026}`);
+      expect(veteranBlock).toContain(`"design": "${h.design}"`);
+      expect(veteranBlock).toContain(`"source": "${h.source}"`);
       for (const r of h.races) {
-        expect(py).toContain(`"yacht_then": "${r.yacht_then}"`);
-        expect(py).toContain(`"note": "${r.note}"`);
+        // one exact substring per past race — race_key, team_id, yacht_then and note together, in the Python's own order —
+        // so a field moved to the wrong race inside a multi-race entry (e.g. Olleanna, Lazy Otter) cannot pass by accident.
+        expect(veteranBlock).toContain(`{"race_key": "${r.race_key}", "team_id": ${r.team_id}, "yacht_then": "${r.yacht_then}", "note": "${r.note}"}`);
       }
     }
   });
-  it("holds RETURNING to the (race_key, team_id) pairs the Python source carries", () => {
-    for (const r of RETURNING) for (const race of r.races) expect(py).toContain(`{"race_key": "${race.race_key}", "team_id": ${race.team_id}}`);
+  it("holds RETURNING — count, the returning skipper's first name, and every past (race_key, team_id) — to the Python source", () => {
+    const count = (returningBlock.match(/"team_2026"/g) ?? []).length;
+    expect(RETURNING.length).toBe(count);
+    for (const r of RETURNING) {
+      expect(returningBlock).toContain(`"team_2026": ${r.team_2026}`);
+      expect(returningBlock).toContain(`"first": "${r.first}"`);
+      for (const race of r.races) expect(returningBlock).toContain(`{"race_key": "${race.race_key}", "team_id": ${race.team_id}}`);
+    }
   });
   it("holds MILESTONE_ORDER to the six names in the Python source's order", () => {
     const idx = MILESTONE_ORDER.map(name => py.indexOf(`("${name}",`));

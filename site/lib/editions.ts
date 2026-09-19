@@ -85,15 +85,20 @@ export function windShares(d: EditionDay): { upwind: number; reaching: number; r
 }
 
 const ahead = (a: number, b: number) => `${nm(Math.abs(a - b))} nm ${a >= b ? "ahead of" : "behind"}`;
+/** Both past years are optional: this year's race outruns 2022's last finisher around day 278 and 2018's around day 322, and
+ *  from there on there is nothing left on the course to compare against. When neither is given, the lead sentence still says
+ *  where the leader stands on the day (no fabricated comparison), and the middle sentence — which exists only to compare —
+ *  is the empty string, for the page to test for and leave out, rather than a guess. */
 export function takeaways(x: { now: EditionDay; y2022?: EditionDay; y2018?: EditionDay; leaderFirst: string }): { lead: string; middle: string } {
   const d = x.now.race_day, L = x.now.leader_mg_nm ?? 0, M = x.now.median_mg_nm ?? 0;
-  const parts = (v: number, k: "leader_mg_nm" | "median_mg_nm", what: string) =>
-    [x.y2022 ? `${ahead(v, x.y2022[k] ?? 0)} ${what}2022’s` : "", x.y2018 ? `${ahead(v, x.y2018[k] ?? 0)} ${what}2018’s` : ""].filter(Boolean);
-  const lp = parts(L, "leader_mg_nm", ""), mp = parts(M, "median_mg_nm", "");
-  return {
-    lead: `On day ${d} ${x.leaderFirst} is ${lp[0].replace("2022’s", "where 2022’s leader was")}${lp[1] ? `, and ${lp[1]}` : ""}.`,
-    middle: `The middle of this fleet is ${mp[0]}${mp[1] ? ` and ${mp[1]}` : ""}.`,
-  };
+  const compare = (v: number, k: "leader_mg_nm" | "median_mg_nm") =>
+    [x.y2022 ? `${ahead(v, x.y2022[k] ?? 0)} 2022’s` : "", x.y2018 ? `${ahead(v, x.y2018[k] ?? 0)} 2018’s` : ""].filter(Boolean);
+  const lp = compare(L, "leader_mg_nm"), mp = compare(M, "median_mg_nm");
+  const lead = lp.length === 0
+    ? `On day ${d} ${x.leaderFirst} is leading.`
+    : `On day ${d} ${x.leaderFirst} is ${lp[0].replace("2022’s", "where 2022’s leader was")}${lp[1] ? `, and ${lp[1]}` : ""}.`;
+  const middle = mp.length === 0 ? "" : `The middle of this fleet is ${mp[0]}${mp[1] ? ` and ${mp[1]}` : ""}.`;
+  return { lead, middle };
 }
 
 // Kept identical to worker/ggrstats/editions_data.py (RETURNING, VETERAN_HULLS, MILESTONES) by a test that reads the Python
