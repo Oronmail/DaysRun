@@ -19,9 +19,9 @@ function Th({ k, sort, setSort, children, right, pad, two }: { k: SortKey; sort:
 }
 // Two columns added 18 Sep 2026. "Latest leg" = average speed on the newest 4-hour leg with an arrow for the course made good
 // (where the boat went; never a heading). "Speed for the wind" = boat speed as a share of model wind speed since the start, as a small
-// meter with the fleet's median marked. The columns read in three blocks: where she is (place, to go, gap), how fast she is going in
-// growing windows (latest 4-hour leg, 24-hour run, 7-day run, the 7 days drawn as bars, and her speed for the wind beside them, at the
-// owner's word), against whom (the leader, the boats nearby, Van Den Heede). Until 19 Sep 2026 three links swapped ONE column between 4 hours, 24 hours and 7 days, and the
+// meter with the fleet's median marked. The columns read in three blocks: where she is (place, to go, gap), how far and how fast she
+// has been going (the miles first: 24-hour run, 7-day run; then the speeds: the latest 4-hour leg in knots, the 7 days drawn as bars,
+// and her speed for the wind — the owner's order of 19 Sep, with the unit in the leg's title because a lone 7.1 among miles confused), against whom (the leader, the boats nearby, Van Den Heede). Until 19 Sep 2026 three links swapped ONE column between 4 hours, 24 hours and 7 days, and the
 // 4-hour view only repeated the latest leg; the owner had them out, and all three paces stand on the table at once.
 // Under 1,700 px the gap moves under the distance to go and the meter keeps its figure.
 export type RankRow = BoatStat & { wind_ratio: number | null; wind_legs: number };
@@ -39,14 +39,14 @@ export default function RankingTable({ boats }: { boats: RankRow[] }) {
   const rows = sortBoats(boats, sort.key, sort.dir);
   const rated = boats.map(b => b.wind_ratio).filter((r): r is number => r != null).sort((x, y) => x - y);
   const median = rated.length ? (rated.length % 2 ? rated[(rated.length - 1) / 2] : (rated[rated.length / 2 - 1] + rated[rated.length / 2]) / 2) : null;
-  return <table className="data"><thead><tr><Th k="rank" {...h}>Place</Th><Th k="change" {...h}>± 24 h</Th><Th k="name" {...h}>Skipper · design</Th><Th k="dtf" {...h} right>To go nm</Th><th className="r wide-only" aria-sort={sort.key === "gap" ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}><button type="button" className="th-sort" onClick={() => setSort(sort.key === "gap" ? { key: "gap", dir: sort.dir === "asc" ? "desc" : "asc" } : { key: "gap", dir: defaultDir("gap") })} title="Sort by this column">Gap<span aria-hidden="true" className="th-arrow">{sort.key === "gap" ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}</span></button></th><Th k="leg" {...h} right two>Latest leg</Th><Th k="run" {...h} right two>24{"\u00a0"}h run nm</Th><Th k="run7" {...h} right two>7{"\u00a0"}d run nm</Th><Th k="spd7" {...h} pad two>Speed · 7{"\u00a0"}days</Th><Th k="wind" {...h} two pad>Speed for the wind</Th><Th k="gain" {...h} right two>On leader 24{"\u00a0"}h</Th><Th k="near" {...h} right two>vs nearby</Th><Th k="vdh" {...h} right>vs VDH</Th></tr></thead>
+  return <table className="data"><thead><tr><Th k="rank" {...h}>Place</Th><Th k="change" {...h}>± 24 h</Th><Th k="name" {...h}>Skipper · design</Th><Th k="dtf" {...h} right>To go nm</Th><th className="r wide-only" aria-sort={sort.key === "gap" ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}><button type="button" className="th-sort" onClick={() => setSort(sort.key === "gap" ? { key: "gap", dir: sort.dir === "asc" ? "desc" : "asc" } : { key: "gap", dir: defaultDir("gap") })} title="Sort by this column">Gap<span aria-hidden="true" className="th-arrow">{sort.key === "gap" ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}</span></button></th><Th k="run" {...h} right two>24{"\u00a0"}h run nm</Th><Th k="run7" {...h} right two>7{"\u00a0"}d run nm</Th><Th k="leg" {...h} right two>Latest leg{"\u00a0"}kt</Th><Th k="spd7" {...h} pad two>Speed · 7{"\u00a0"}days</Th><Th k="wind" {...h} two pad>Speed for the wind</Th><Th k="gain" {...h} right two>On leader 24{"\u00a0"}h</Th><Th k="near" {...h} right two>vs nearby</Th><Th k="vdh" {...h} right>vs VDH</Th></tr></thead>
     <tbody>{rows.map(b => <tr key={b.team_id}>
       <td className="num" style={{ fontSize: 15, fontWeight: 500 }}>{b.rank}</td><td className="num" style={{ fontSize: 12 }}><Tri n={b.rank_change} /></td>
       <td><Who b={b} /></td>
       <td className="num r">{nm(b.dtf_nm)}<div className="narrow-only" style={{ fontSize: 11, color: "var(--graphite)" }}>{b.gap_nm ? `+${nm(b.gap_nm)}` : "leader"}</div></td><td className="num r wide-only" style={{ color: "var(--graphite)" }}>{b.gap_nm ? `+${nm(b.gap_nm)}` : "—"}</td>
-      <td className="num r" title={legTitle(b)}>{leg(b)}</td>
       <td className="num r" style={{ fontWeight: b.fleet_best24 ? 600 : 400 }}><Run b={b} /></td>
       <td className="num r" title="Nautical miles sailed along the track over the last 7 days">{nm(b.run7_nm)}</td>
+      <td className="num r" title={legTitle(b)}>{leg(b)}</td>
       <td style={{ padding: "8px 6px 8px 12px" }}><SpeedBars log={b.speed_log_json} /></td>
       <td className="num" style={{ paddingLeft: 12 }} title={b.wind_ratio == null ? "Not rated yet: fewer than ten legs sailed in 8–25 kt of model wind" : `Boat speed as a share of model wind speed since the start, ${b.wind_legs} legs in 8–25 kt; the mark is the fleet’s median`}>{b.wind_ratio == null ? "—" : <><span className="wide-only-inline"><Meter v={b.wind_ratio} median={median} /></span>{Math.round(b.wind_ratio * 100)}%</>}</td>
       <td className={`num r ${signClass(b.gain24_nm)}`} title="Nautical miles gained (+) or lost (−) on the leader in 24 hours, fix to fix">{sgn(b.gain24_nm, 0)}</td>

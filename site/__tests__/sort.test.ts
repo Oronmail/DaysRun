@@ -22,11 +22,11 @@ describe("sortBoats", () => {
 
 describe("the phone list's orderings", () => {
   it("offers only what a phone row shows, so that an order is never a mystery", () => {
-    expect(phoneSortOptions().map(o => o.key)).toEqual(["rank", "change", "name", "dtf", "leg", "run", "run7", "gain", "wind", "vdh"]);   // no gap, vs nearby or 7-day speed bars: not on the row
+    expect(phoneSortOptions().map(o => o.key)).toEqual(["rank", "change", "name", "dtf", "run", "run7", "leg", "wind", "gain", "vdh"]);   // no gap, vs nearby or 7-day speed bars: not on the row
   });
-  it("names the three paces plainly, shortest window first, as the table sets them side by side", () => {
-    const label = (k: string) => phoneSortOptions().find(o => o.key === k)!.label;
-    expect([label("leg"), label("run"), label("run7")]).toEqual(["Latest 4-hour leg", "24-hour run", "7-day run"]);
+  it("names the paces plainly and in the table's order: the miles (24 hours, 7 days), then the speeds (latest leg, for the wind)", () => {
+    const opts = phoneSortOptions(), label = (k: string) => opts.find(o => o.key === k)!.label;
+    expect([label("run"), label("run7"), label("leg")]).toEqual(["24-hour run", "7-day run", "Latest 4-hour leg, kt"]);
   });
   it("sorts the 7-day run, a column of its own since the three window filters went (19 Sep 2026), longest first", () => {
     const rows = [b(1, 1, { run7_nm: 900 }), b(2, 2, { run7_nm: null }), b(3, 3, { run7_nm: 1010 })];

@@ -20,6 +20,6 @@ export function sortBoats<T extends Row>(boats: T[], key: SortKey, dir: SortDir)
 // The phone's compact row shows fewer numbers than the table, and it only offers the orderings a reader can check against the row.
 export function phoneSortOptions(): { key: SortKey; label: string }[] {
   return [{ key: "rank", label: "Place" }, { key: "change", label: "Places gained, 24 h" }, { key: "name", label: "Skipper" }, { key: "dtf", label: "To go" },
-    { key: "leg", label: "Latest 4-hour leg" }, { key: "run", label: "24-hour run" }, { key: "run7", label: "7-day run" },
-    { key: "gain", label: "Gained on the leader, 24 h" }, { key: "wind", label: "Speed for the wind" }, { key: "vdh", label: "Against Van Den Heede" }];
+    { key: "run", label: "24-hour run" }, { key: "run7", label: "7-day run" }, { key: "leg", label: "Latest 4-hour leg, kt" },
+    { key: "wind", label: "Speed for the wind" }, { key: "gain", label: "Gained on the leader, 24 h" }, { key: "vdh", label: "Against Van Den Heede" }];
 }
